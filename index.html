@@ -148,6 +148,9 @@ table.gr tfoot td{background:#eef3f9;font-weight:700}
 .calstrip .hd{text-align:center;font-size:11px;font-weight:700;color:var(--ink-2);padding:2px 0}
 
 .ent{display:grid;grid-template-columns:1fr 150px 40px;gap:8px;align-items:center;margin-bottom:8px}
+.ent .sitebtn{display:flex;align-items:center;justify-content:space-between;gap:6px;text-align:left;font-weight:600}
+.ent .sitebtn .ph{color:var(--ink-3);font-weight:400}
+.ent .sitebtn .arrow{color:var(--ink-3);font-size:11px;flex:none}
 .ent .hbox{display:flex;align-items:center;gap:4px}
 .ent .hbox input{text-align:center;font-weight:700;font-size:16px;padding:9px 4px}
 .ent .hbox button{width:38px;min-height:40px;flex:0 0 38px;border:1px solid var(--line);background:#f4f7fb;border-radius:8px;font-weight:800;font-size:15px}
@@ -1360,14 +1363,13 @@ $('#batchApply').onclick=()=>{
 };
 
 function renderEntryRows(){
-  const box=$('#entList'); const sites=siteList();
+  const box=$('#entList'); const activeSites=siteList();
   if(!draft.entries.length) draft.entries=[{id:uid(), siteId:'', hours:''}];
   box.innerHTML = draft.entries.map((e,i)=>{
-    const opts = ['<option value="">— 現場を選択 —</option>']
-      .concat(sites.map(s=>`<option value="${s.id}"${s.id===e.siteId?' selected':''}>${esc(s.name)}</option>`));
-    if(e.siteId && !sites.some(s=>s.id===e.siteId)) opts.push(`<option value="${e.siteId}" selected>${esc(siteName(e.siteId))}（終了）</option>`);
+    const closed = e.siteId && !activeSites.some(s=>s.id===e.siteId);
+    const label = e.siteId ? esc(siteName(e.siteId))+(closed?'（終了）':'') : '<span class="ph">— 現場を選択 —</span>';
     return `<div class="ent" data-i="${i}">
-      <select class="es">${opts.join('')}</select>
+      <button type="button" class="es sitebtn" data-i="${i}">${label}<span class="arrow">▾</span></button>
       <div class="hbox"><button data-m="-0.5">−</button><input class="eh" type="number" step="0.25" min="0" max="24" value="${e.hours===''||e.hours==null?'':e.hours}" inputmode="decimal" placeholder="時間"><button data-m="0.5">＋</button></div>
       <button class="del" title="削除">✕</button></div>`;
   }).join('');
@@ -1375,18 +1377,47 @@ function renderEntryRows(){
 }
 $('#entList').addEventListener('input', e=>{
   const row=e.target.closest('.ent'); if(!row) return; const i=+row.dataset.i;
-  if(e.target.classList.contains('es')) draft.entries[i].siteId=e.target.value;
   if(e.target.classList.contains('eh')) draft.entries[i].hours=e.target.value;
   $('#entCount').textContent = `合計 ${fx(draft.entries.reduce((a,e)=>a+num(e.hours),0))||0} 時間 / ${draft.entries.filter(e=>e.siteId).length} 現場`;
   renderCalc(); scheduleAutosave();
 });
 $('#entList').addEventListener('click', e=>{
   const row=e.target.closest('.ent'); if(!row) return; const i=+row.dataset.i;
+  if(e.target.closest('.sitebtn')){ openSitePicker(i); return; }
   if(e.target.dataset.m){ const v=Math.max(0, Math.round((num(draft.entries[i].hours)+parseFloat(e.target.dataset.m))*100)/100);
     draft.entries[i].hours = v||''; renderEntryRows(); renderCalc(); scheduleAutosave(); }
   if(e.target.classList.contains('del')){ draft.entries.splice(i,1); renderEntryRows(); renderCalc(); scheduleAutosave(); }
 });
-$('#addEnt').onclick=()=>{ draft.entries.push({id:uid(), siteId:'', hours:''}); renderEntryRows(); const l=$$('#entList .es').pop(); if(l) l.focus(); };
+/* 現場選択：50音順に並べた一覧から、名前で検索して選べるダイアログ
+   （現場数が多い会社で、選択肢を目で探す手間を減らすため） */
+function openSitePicker(i){
+  const sites=siteList().slice().sort((a,b)=> a.name.localeCompare(b.name,'ja'));
+  const cur=draft.entries[i]? draft.entries[i].siteId : '';
+  const body=`
+    <input type="text" id="sitePickSearch" placeholder="現場名で検索" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <div id="sitePickList" style="margin-top:10px;max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:4px"></div>`;
+  dialog('現場を選択（'+sites.length+'件・50音順）', body, [
+    {t:'選択を解除', fn:()=>{ draft.entries[i].siteId=''; renderEntryRows(); renderCalc(); scheduleAutosave(); }},
+    {t:'閉じる'}
+  ]);
+  function paint(q){
+    const qq=(q||'').trim();
+    const filtered = qq ? sites.filter(s=> s.name.indexOf(qq)>=0) : sites;
+    $('#sitePickList').innerHTML = filtered.length
+      ? filtered.map(s=>`<button type="button" class="btn sm" data-id="${s.id}" style="width:100%;justify-content:flex-start;${s.id===cur?'background:#eef5fc;border-color:#c8ddf1':''}">${esc(s.name)}</button>`).join('')
+      : '<div class="empty">見つかりませんでした</div>';
+  }
+  paint('');
+  $('#sitePickSearch').oninput=e=> paint(e.target.value);
+  $('#sitePickList').onclick=e=>{
+    const b=e.target.closest('button[data-id]'); if(!b) return;
+    draft.entries[i].siteId=b.dataset.id;
+    renderEntryRows(); renderCalc(); scheduleAutosave();
+    $('#modal').classList.remove('on');
+  };
+  setTimeout(()=>{ const el=$('#sitePickSearch'); if(el) el.focus(); }, 30);
+}
+$('#addEnt').onclick=()=>{ draft.entries.push({id:uid(), siteId:'', hours:''}); renderEntryRows(); openSitePicker(draft.entries.length-1); };
 $('#fillRest').onclick=()=>{
   const c=cfg(); const t=draft.entries.reduce((a,e)=>a+num(e.hours),0);
   const last=draft.entries[draft.entries.length-1];
