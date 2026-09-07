@@ -21,6 +21,7 @@
   --fs:15px;
 }
 *{box-sizing:border-box}
+[hidden]{display:none !important}   /* .row などの display 指定に負けないように */
 html,body{margin:0;padding:0}
 body{
   font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic UI","Yu Gothic",Meiryo,"Noto Sans JP","Noto Sans CJK JP","MS PGothic",system-ui,sans-serif;
@@ -125,17 +126,32 @@ table.gr tfoot td{background:#eef3f9;font-weight:700}
 .d-sun{color:var(--sun);font-weight:700}
 .d-sat{color:var(--sat);font-weight:700}
 .tag-hol{background:#fdf1f1;color:var(--sun)}
-
 /* ---------- entry screen ---------- */
 .picker{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}
 @media(max-width:700px){ .picker{grid-template-columns:1fr} .daybar #eDate{min-width:0;flex:1} }
 .daybar{display:flex;align-items:center;gap:6px}
 .daybar .btn{min-width:40px;padding:9px 10px}
-.dayhead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:2px 0 0}
-.dayhead .big{font-size:26px;font-weight:800;letter-spacing:.02em}
-.dayhead .w{font-size:16px;font-weight:800}
+
+/* 入力中の日付を、下へスクロールしても見失わないよう画面上部に固定して表示する */
+.daysticky{position:sticky;top:var(--navh,44px);z-index:30;display:flex;align-items:center;gap:8px;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);
+  padding:7px 10px;margin-bottom:12px}
+.daysticky .dsmain{display:flex;align-items:baseline;gap:8px;min-width:0;flex-wrap:wrap}
+.daysticky .dsmain b{font-size:18px;font-weight:800;white-space:nowrap;letter-spacing:.02em}
+.daysticky .who{font-size:12.5px;font-weight:700;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:9em}
+.daysticky .dstot{font-size:12.5px;font-weight:700;color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.daysticky .btn{min-width:36px;padding:5px 9px;font-size:16px;flex:none}
+@media(max-width:480px){
+  .daysticky{padding:6px 8px;gap:6px}
+  .daysticky .dsmain{flex-wrap:nowrap}
+  .daysticky .dsmain b{font-size:16px}
+  .daysticky .who{max-width:5.5em;font-size:11.5px}
+  .daysticky .dstot{font-size:11.5px}
+  .daysticky .pill{padding:2px 6px;font-size:10px}
+}
+
 .calstrip{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:4px}
-.calstrip .cd{border:1px solid var(--line);border-radius:8px;background:#fff;padding:5px 2px;text-align:center;font-size:12px;line-height:1.25;min-height:46px}
+.calstrip .cd{position:relative;border:1px solid var(--line);border-radius:8px;background:#fff;padding:5px 2px;text-align:center;font-size:12px;line-height:1.25;min-height:46px;-webkit-touch-callout:none;user-select:none}
 .calstrip .cd .dd{font-weight:700;font-size:13px}
 .calstrip .cd .hh{font-size:10.5px;color:var(--ink-3);font-weight:700}
 .calstrip .cd.has{background:#eaf5f1;border-color:#b6ded2}
@@ -144,8 +160,24 @@ table.gr tfoot td{background:#eef3f9;font-weight:700}
 .calstrip .cd.rest{background:#f4f5f7;color:var(--ink-3)}
 .calstrip .cd.sel{outline:3px solid var(--navy);outline-offset:-1px;border-color:var(--navy)}
 .calstrip .cd.batchon{outline:3px solid var(--teal);outline-offset:-1px;border-color:var(--teal);background:#e2f4ef}
+.calstrip .cd.sel.batchon{outline-color:var(--navy)}
+/* 未同期の日：日付全体をオレンジにし、「未同期」の文字を出す（一目で分かるように） */
+.calstrip .cd.unsent{background:#fdf0dc;border-color:#dc9a3c;box-shadow:inset 0 0 0 1px #dc9a3c}
+.calstrip .cd.unsent .dd{color:#8a5000 !important}
+.calstrip .cd.unsent .hh{color:#8a5000}
+.calstrip .cd .unlbl,.unlbl-legend{display:inline-block;background:var(--amber);color:#fff;border-radius:3px;
+  font-size:9.5px;font-weight:800;line-height:1.45;padding:0 3px;letter-spacing:.02em;white-space:nowrap}
+.calstrip .cd .unlbl{margin-top:1px}
+.unlbl-legend{vertical-align:1px}
 .calstrip .cd.pad{border:0;background:none;pointer-events:none}
 .calstrip .hd{text-align:center;font-size:11px;font-weight:700;color:var(--ink-2);padding:2px 0}
+
+/* 作業内容の候補：本体を押すと入力、右の✕でその候補を削除 */
+.chips .chipwrap{display:inline-flex;align-items:center;border:1px solid var(--line);background:#f5f8fc;border-radius:999px;overflow:hidden}
+.chips .chipwrap:hover{background:#e8f0f9}
+.chips .chipwrap .cmain{border:0;background:none;padding:5px 5px 5px 11px;font-size:12.5px;font-weight:600}
+.chips .chipwrap .cx{border:0;background:none;padding:5px 9px 5px 3px;font-size:11px;color:var(--ink-3);line-height:1}
+.chips .chipwrap .cx:hover{color:var(--red)}
 
 .ent{display:grid;grid-template-columns:1fr 150px 40px;gap:8px;align-items:center;margin-bottom:8px}
 .ent .sitebtn{display:flex;align-items:center;justify-content:space-between;gap:6px;text-align:left;font-weight:600}
@@ -155,7 +187,7 @@ table.gr tfoot td{background:#eef3f9;font-weight:700}
 .ent .hbox input{text-align:center;font-weight:700;font-size:16px;padding:9px 4px}
 .ent .hbox button{width:38px;min-height:40px;flex:0 0 38px;border:1px solid var(--line);background:#f4f7fb;border-radius:8px;font-weight:800;font-size:15px}
 .ent .del{border:1px solid var(--line);background:#fff;border-radius:8px;min-height:40px;color:var(--red);font-size:16px}
-@media(max-width:620px){ .ent{grid-template-columns:1fr;gap:6px} .ent .del{width:100%} }
+@media(max-width:620px){ .ent{grid-template-columns:1fr 44px;gap:6px} .ent .sitebtn{grid-column:1 / -1} .ent .del{width:auto} }
 
 .calc{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .calc div{background:#fff;padding:9px 4px;text-align:center}
@@ -211,7 +243,6 @@ table.gr tfoot td{background:#eef3f9;font-weight:700}
 .topbanner .ic{font-size:16px;flex:none}
 .topbanner b{font-weight:800}
 .topbanner .btn{min-height:32px;padding:6px 13px;font-size:12.5px}
-
 /* ================= PRINT ================= */
 #printarea{background:var(--bg)}
 #printarea .psheet{
@@ -220,7 +251,6 @@ table.gr tfoot td{background:#eef3f9;font-weight:700}
   color:#000;overflow:hidden
 }
 #printarea .psheet.portrait{width:210mm;min-height:297mm}
-.pv-scale{transform-origin:top left}
 .phead{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:2px;
   border-bottom:1.6pt solid #123;padding-bottom:1.5px}
 .phead .t{font-size:13.5pt;font-weight:800;letter-spacing:.1em;line-height:1.12}
@@ -250,7 +280,6 @@ table.pt col.cday{width:13mm}
 table.pt col.cw{width:6.5mm}
 table.pt col.ct{width:10mm}
 table.pt col.ch{width:9.5mm}
-.pfoot{display:flex;justify-content:space-between;font-size:7pt;color:#444;margin-top:2.5px}
 .pnote{font-size:7.5pt;color:#444;margin-top:3px}
 .pgrid2{display:grid;grid-template-columns:1fr 1fr;gap:6mm}
 
@@ -274,7 +303,6 @@ table.pt col.ch{width:9.5mm}
   table.pt thead{display:table-header-group}
 }
 @media(max-width:1360px){ #printarea{overflow-x:auto} }
-
 </style>
 </head>
 <body>
@@ -309,41 +337,46 @@ table.pt col.ch{width:9.5mm}
 </div>
 <!-- ============ 日報入力 ============ -->
 <section class="view on" id="v-entry">
+  <div class="daysticky" id="dayStick">
+    <button class="btn sm" id="dPrev" title="前の日">‹</button>
+    <div class="dsmain">
+      <b id="dsDate">—</b>
+      <span class="who" id="dsStaff"></span>
+      <span id="dsFlags"></span>
+    </div>
+    <span class="spacer"></span>
+    <span class="dstot" id="dsTot"></span>
+    <button class="btn sm" id="dNext" title="次の日">›</button>
+  </div>
+
   <div class="card">
     <div class="body">
       <div class="picker">
-        <div class="fld grow"><label>作業者</label><select id="eStaff"></select></div>
-        <div class="fld"><label>&nbsp;</label>
-          <div class="daybar">
-            <button class="btn" id="dPrev">‹</button>
-            <input type="date" id="eDate" style="min-width:160px">
-            <button class="btn" id="dNext">›</button>
+        <div class="fld grow"><label>作業者</label>
+          <div class="row" style="gap:6px;flex-wrap:nowrap;align-items:center">
+            <select id="eStaff" style="flex:1"></select>
+            <button class="btn sm" id="eMyStaff" type="button">既定にする</button>
           </div>
         </div>
+        <div class="fld"><label>日付</label>
+          <div class="daybar"><input type="date" id="eDate" style="min-width:170px"></div>
+        </div>
       </div>
-      <div class="dayhead" style="margin-top:10px">
-        <span class="big" id="dBig">—</span><span class="w" id="dWeek"></span>
-        <span id="dFlags"></span>
-        <span class="spacer"></span>
-        <span class="hint" id="dEdited"></span>
-      </div>
-      <div class="row" style="margin-top:8px;align-items:center">
-        <span class="hint">同じ内容を複数日にまとめて入力できます</span>
-        <span class="spacer"></span>
-        <button class="btn sm ghost" id="batchToggle">複数日にまとめて入力</button>
-      </div>
-      <div class="calstrip" id="calStrip" style="margin-top:8px"></div>
+      <div class="calstrip" id="calStrip" style="margin-top:10px"></div>
       <div class="row" id="batchBar" style="margin-top:8px" hidden>
         <span class="hint" id="batchCount"></span>
         <span class="spacer"></span>
-        <button class="btn sm" id="batchClear">選択解除</button>
-        <button class="btn sm primary" id="batchApply">選択した日に反映</button>
-        <button class="btn sm ghost" id="batchEnd">終了</button>
+        <button class="btn sm" id="batchClear">選択を解除</button>
+        <button class="btn sm primary" id="batchApply">選択した日にまとめて入力</button>
+      </div>
+      <div class="hint" style="margin-top:8px">
+        日付を押すとその日に移動します。<b>Shiftを押しながら押す</b>と、その間の日が（日曜・休日を除いて）まとめて選ばれ、同じ内容を一度に入力できます。スマホは<b>長押し</b>で1日ずつ選べます。<br>
+        オレンジ色で <span class="unlbl-legend">未同期</span> と出ている日は、<b>この端末にしか入っていません</b>。ほかの端末や帳票には反映されないため、<b>月末の集計・印刷までに必ず同期してください</b>（一番下の「保存して同期」を押すか、電波の良い場所でしばらく待つと消えます）。
       </div>
       <div class="row" id="refRow" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line-s)">
         <div class="fld grow" style="max-width:380px">
-          <label>過去の入力を参考にする</label>
-          <select id="refPick"><option value="">— 当日以前の入力から選ぶ —</option></select>
+          <label>以前の入力から選ぶ</label>
+          <select id="refPick"><option value="">— 以前の入力から選ぶ —</option></select>
         </div>
         <div class="fld"><label>&nbsp;</label><button class="btn sm" id="refLoad">この内容を読み込む</button></div>
         <span class="spacer"></span>
@@ -361,7 +394,6 @@ table.pt col.ch{width:9.5mm}
         <div class="fld"><label>&nbsp;</label>
           <div class="chips">
             <button class="chip" id="qStd">標準 8:00–17:00</button>
-            <button class="chip" id="qClear">時刻クリア</button>
           </div>
         </div>
       </div>
@@ -383,10 +415,10 @@ table.pt col.ch{width:9.5mm}
   <div class="card">
     <h3>作業内容・備考</h3>
     <div class="body">
-      <textarea id="eNote" placeholder="例）現場管理、書類作成、見積書作成 …"></textarea>
+      <textarea id="eNote" placeholder="例）型枠組立、コンクリート打設、現場管理"></textarea>
       <div class="row" style="margin-top:8px;align-items:center">
         <div class="chips" id="noteChips" style="flex:1"></div>
-        <button class="btn sm ghost" id="editChips">候補を編集</button>
+        <button class="btn sm ghost" id="editChips">候補の編集</button>
       </div>
     </div>
   </div>
@@ -396,12 +428,12 @@ table.pt col.ch{width:9.5mm}
     <div class="body">
       <div class="calc" id="calcBox"></div>
       <div class="hint" id="calcNote" style="margin-top:8px"></div>
+      <div class="hint" id="dEdited" style="margin-top:4px"></div>
     </div>
   </div>
 
   <div class="stickysave">
-    <button class="btn" id="eDelete">この日を消去</button>
-    <button class="btn primary" id="eSave">保存する</button>
+    <button class="btn primary" id="eSave">保存して同期</button>
   </div>
 </section>
 
@@ -448,7 +480,6 @@ table.pt col.ch{width:9.5mm}
       <option value="all">①〜③ すべて</option>
     </select>
     <select id="pStaff" style="width:auto;min-width:150px;display:none"></select>
-    <label class="hint" style="display:flex;align-items:center;gap:5px"><input type="checkbox" id="pSkipEmpty" checked style="width:auto;min-height:0">実績のない人を省く</label>
     <span class="spacer"></span>
     <span class="hint" id="pHint"></span>
     <button class="btn primary" id="pDo">印刷 / PDF保存</button>
@@ -465,11 +496,9 @@ table.pt col.ch{width:9.5mm}
 
 <div class="toast" id="toast"></div>
 <div class="modal" id="modal"><div class="box"><h3 id="mdTitle"></h3><div class="body" id="mdBody"></div><div class="foot" id="mdFoot"></div></div></div>
-
 <script type="application/json" id="seed">
 {"staff":[{"id":"s01","name":"松栄勝則","ord":0,"active":true},{"id":"s02","name":"池田一也","ord":1,"active":true},{"id":"s03","name":"佐々木晃史","ord":2,"active":true},{"id":"s04","name":"大村知裕","ord":3,"active":true},{"id":"s05","name":"滝口裕訓","ord":4,"active":true},{"id":"s06","name":"西村浩幸","ord":5,"active":true},{"id":"s07","name":"掛正則","ord":6,"active":true},{"id":"s08","name":"梅田大記","ord":7,"active":true},{"id":"s09","name":"田中秋信","ord":8,"active":true}],"site":[{"id":"t001","name":"倉庫・プラント","ord":0,"active":true},{"id":"t002","name":"林道道路環境整備筒賀地区","ord":1,"active":true},{"id":"t003","name":"事務所","ord":2,"active":true},{"id":"t004","name":"町道草刈工事","ord":3,"active":true},{"id":"t005","name":"環境保全","ord":4,"active":true},{"id":"t006","name":"正地除塵","ord":5,"active":true},{"id":"t007","name":"高下公民館舗装工事","ord":6,"active":true},{"id":"t008","name":"中電見積依頼書類作成","ord":7,"active":true},{"id":"t009","name":"河川施設維持","ord":8,"active":true},{"id":"t010","name":"木下商会便所改修工事","ord":9,"active":true},{"id":"t011","name":"正地用水","ord":10,"active":true},{"id":"t012","name":"森下邸造成工事","ord":11,"active":true},{"id":"t013","name":"西部環境工場修繕工事","ord":12,"active":true},{"id":"t014","name":"中電社宅修繕","ord":13,"active":true},{"id":"t015","name":"除雪","ord":14,"active":true},{"id":"t016","name":"除塵","ord":15,"active":true},{"id":"t017","name":"講習","ord":16,"active":true},{"id":"t018","name":"道路アダプト","ord":17,"active":true},{"id":"t019","name":"安全教育","ord":18,"active":true},{"id":"t020","name":"東山口草刈工事","ord":19,"active":true},{"id":"t021","name":"王泊ダム管理所雨漏り他修繕工事","ord":20,"active":true},{"id":"t022","name":"樽床ダム管理所２階空調設備故障","ord":21,"active":true},{"id":"t023","name":"内黒山無線中継局舎空調設備故障","ord":22,"active":true},{"id":"t024","name":"吉ケ瀬(発)筒賀川取水堰管理所空調設備取替工事","ord":23,"active":true},{"id":"t025","name":"松原倉庫","ord":24,"active":true},{"id":"t026","name":"西部環境","ord":25,"active":true},{"id":"t027","name":"中電工事予定調査・仮見積","ord":26,"active":true},{"id":"t028","name":"吉ヶ瀬(発)シャッター調査・調整","ord":27,"active":true},{"id":"t029","name":"山ノ廻公民館","ord":28,"active":true},{"id":"t030","name":"町道草刈","ord":29,"active":true},{"id":"t031","name":"安芸太田事務所構内駐車場整備","ord":30,"active":true},{"id":"t032","name":"打梨(発)本館便所改修工事","ord":31,"active":true},{"id":"t033","name":"西部環境一般廃棄物転開場倉庫新築工事","ord":32,"active":true},{"id":"t034","name":"交通安全施設","ord":33,"active":true},{"id":"t035","name":"町道三谷龍頭線道路改良工事","ord":34,"active":true},{"id":"t036","name":"柴木川第二(発)屋外便所建替工事","ord":35,"active":true},{"id":"t037","name":"土居(発)本館便所改修工事","ord":36,"active":true},{"id":"t038","name":"鱒溜ダム・立岩ダム各所照明取替","ord":37,"active":true},{"id":"t039","name":"健康診断","ord":38,"active":true},{"id":"t040","name":"山ノ廻土捨場防草シート修繕工事","ord":39,"active":true},{"id":"t041","name":"樽床ダム管理所２階空調設備故障調査","ord":40,"active":true},{"id":"t042","name":"内黒山無線中継局舎空調設備故障調査","ord":41,"active":true},{"id":"t043","name":"中電工事予定調査・仮見積・見積依頼","ord":42,"active":true}],"holiday":[{"id":"2026-04-11","name":""},{"id":"2026-04-25","name":""},{"id":"2026-04-29","name":""},{"id":"2026-05-04","name":""},{"id":"2026-05-05","name":""},{"id":"2026-05-06","name":""},{"id":"2026-05-23","name":""},{"id":"2026-06-13","name":""},{"id":"2026-06-27","name":""},{"id":"2026-07-11","name":""},{"id":"2026-07-20","name":""},{"id":"2026-07-25","name":""},{"id":"2026-08-11","name":""},{"id":"2026-08-12","name":""},{"id":"2026-08-13","name":""},{"id":"2026-08-14","name":""},{"id":"2026-08-15","name":""},{"id":"2026-09-12","name":""},{"id":"2026-09-21","name":""},{"id":"2026-09-22","name":""},{"id":"2026-09-23","name":""},{"id":"2026-09-26","name":""},{"id":"2026-10-10","name":""},{"id":"2026-10-12","name":""},{"id":"2026-10-24","name":""},{"id":"2026-11-03","name":""},{"id":"2026-11-14","name":""},{"id":"2026-11-23","name":""},{"id":"2026-11-28","name":""},{"id":"2026-12-12","name":""},{"id":"2026-12-29","name":""},{"id":"2026-12-30","name":""},{"id":"2026-12-31","name":""},{"id":"2027-01-01","name":""},{"id":"2027-01-02","name":""},{"id":"2027-01-04","name":""},{"id":"2027-01-05","name":""},{"id":"2027-01-11","name":""},{"id":"2027-01-23","name":""},{"id":"2027-02-11","name":""},{"id":"2027-02-13","name":""},{"id":"2027-02-23","name":""},{"id":"2027-02-27","name":""},{"id":"2027-03-06","name":""},{"id":"2027-03-20","name":""},{"id":"2027-03-22","name":""}]}
-</script>
-<script>
+</script><script>
 /* =========================================================================
    作業集計日報システム  v1.0
    - 完全オフライン動作（IndexedDB）＋ オンライン復帰時に自動同期
@@ -497,13 +526,22 @@ function lastWorkDay(mk){
   for(let i=dates.length-1;i>=0;i--){ if(!isRestDay(dates[i])) return dates[i]; }
   return dates[dates.length-1];
 }
+/* 月末が近いか＝その月の稼働日（休日を除く日）の残りが n 日以内になったか（既定3日） */
+function nearMonthEnd(n){
+  const t=new Date(), mk=monthKey(t), today=ymd(t);
+  const wd=monthDates(mk).filter(d=>!isRestDay(d));
+  if(!wd.length) return true;
+  return today >= wd[Math.max(0, wd.length-(n||3))];
+}
 function reiwa(y){ return y-2018; }
 function jpMonth(mk){ const [y,m]=mk.split('-').map(Number); return `令和${reiwa(y)}年${m}月`; }
 function jpMonthFull(mk){ const [y,m]=mk.split('-').map(Number); return `${y}年（令和${reiwa(y)}年）${m}月`; }
 function t2m(t){ if(!t) return null; const [h,m]=t.split(':').map(Number); return h*60+m; }
 function m2t(v){ v=((v%1440)+1440)%1440; return pad2(Math.floor(v/60))+':'+pad2(v%60); }
-function fx(v,d){ if(v==null||v===''||v===0) return ''; const n=Math.round(v*100)/100;
-  return (Math.abs(n%1)<1e-9)? String(n) : n.toFixed(d==null?1:d).replace(/0$/,''); }
+/* 作業時間の表示は小数第1位で統一する（7 → 7.0、7.5 → 7.5）。桁がそろって読みやすくなる */
+function fx(v,d){ if(v==null||v===''||v===0) return ''; return (Math.round(v*100)/100).toFixed(d==null?1:d); }
+/* 入力された時間は小数第1位に丸めて保存する（表示と中身を一致させる） */
+function h1(v){ return Math.round(num(v)*10)/10; }
 function num(v){ const n=parseFloat(v); return isFinite(n)?n:0; }
 
 /* ---------------- 端末ID / 端末名 ---------------- */
@@ -549,15 +587,16 @@ const IDB = (()=>{
    config  : {id='config', company, stdHours, nightFrom, nightTo, restWd[], defStart, defEnd, noteChips[]}
 -------------------------------------------------- */
 const TYPES=['staff','site','holiday','day','entry','config'];
+/* noteChips（作業内容の候補）は空から始め、入力した内容を各自の候補として覚えていく */
 const DEF_CONFIG={ id:'config', company:'', stdHours:7, nightFrom:'22:00', nightTo:'05:00',
   restWd:[0], defStart:'08:00', defEnd:'17:00', ghRepo:'', jpHolidays:true,
-  noteChips:['現場管理','書類作成','見積書作成','現場調査','打合せ','講習','安全教育','健康診断','有給休暇','休日'] };
+  noteChips:[] };
 
 let S = null;  // state
 function blankState(){
   const s={ v:1, meta:{ pending:{}, lastSyncAt:0, autoSync:true, myStaff:'',
     ghRepo:'', peerVer:{},
-    holidaySeeded:false, staffCleanup1:false, siteArchiveSince:0, pendingSince:0 } };
+    holidaySeeded:false, staffCleanup1:false, chipsCleared1:false, chipsCleared2:false, pendingSince:0, endWarnOn:'' } };
   TYPES.forEach(t=> s[t]={});
   s.config['config']=Object.assign({},DEF_CONFIG,{_u:now(),_d:DEVICE});
   return s;
@@ -580,7 +619,7 @@ function persist(immediate){
 }
 /* 閉じる・切り替える直前に、入力中の下書きも含めて必ず保存する */
 function flushDraftIfDirty(){
-  try{ if(typeof draft!=='undefined' && draft && typeof hasEdits==='function' && hasEdits()) commitDraft(); }catch(e){}
+  try{ if(typeof draft!=='undefined' && draft && typeof hasEdits==='function' && hasEdits()) commitDraft(true); }catch(e){}
 }
 window.addEventListener('pagehide',()=>{ flushDraftIfDirty(); if(dirty) IDB.set('state',S); });
 window.addEventListener('beforeunload', e=>{
@@ -808,7 +847,6 @@ function sitesUsed(staffId,mk){
   return Object.keys(m).sort((a,b)=> (order[a]==null?9999:order[a])-(order[b]==null?9999:order[b]));
 }
 </script>
-
 <script>
 /* =========================================================================
    同期エンジン（GitHubのプライベートリポジトリ）
@@ -1044,7 +1082,6 @@ function dialog(title, bodyHTML, buttons){
 }
 $('#modal').addEventListener('click', e=>{ if(e.target.id==='modal') $('#modal').classList.remove('on'); });
 </script>
-
 <script>
 /* =========================================================================
    画面制御
@@ -1137,8 +1174,7 @@ function updateSyncBanner(){
   const pendingMs = pend>0 && S.meta.pendingSince ? (now()-S.meta.pendingSince) : 0;
   const today=ymd(new Date());
   const mk=monthKey(new Date());
-  const lwd=lastWorkDay(mk);
-  const atOrPastMonthEnd = today>=lwd;
+  const atOrPastMonthEnd = nearMonthEnd(3);      // 稼働日の残りが3日以内
   const errTrouble = st.k==='error';
   const staleTrouble = pend>0 && pendingMs>5*60*1000;                 // 5分たっても送信できていない
   const monthEndTrouble = atOrPastMonthEnd && (pend>0 || errTrouble);
@@ -1150,12 +1186,12 @@ function updateSyncBanner(){
   let msg;
   if(errTrouble){
     msg = monthEndTrouble
-      ? `<b>${jp}の同期でエラーが発生しています。</b>稼働最終日を過ぎています。「管理・設定」で保存先・トークンをご確認のうえ、再同期してください。（${st.txt}）`
+      ? `<b>${jp}の同期でエラーが発生しています。月末が近づいています。</b>「管理・設定」で保存先・トークンをご確認のうえ、集計・印刷の前に必ず同期してください。（${st.txt}）`
       : `<b>同期でエラーが発生しています。</b>「管理・設定」で保存先・トークンをご確認のうえ、再同期してください。（${st.txt}）`;
   } else if(monthEndTrouble){
-    msg = `<b>${jp}の入力に、まだ他の端末へ送信されていないデータが ${pend} 件あります。</b>稼働最終日を過ぎています。印刷・集計の前に同期を確認してください。`;
+    msg = `<b>月末が近づいています。${jp}の入力に、まだ同期されていないものが ${pend} 件あります。</b>この端末にしか入っていないため、このままでは集計・帳票に反映されません。集計・印刷の前に必ず同期してください。`;
   } else {
-    msg = `<b>この端末にたまっていて、まだ他の端末へ送信されていない入力が ${pend} 件あります。</b>電波の良い場所で、画面右上の同期表示を押してください。`;
+    msg = `<b>まだ同期されていない入力が ${pend} 件あります。</b>この端末にしか入っていません。月末までに同期してください（電波の良い場所で、画面右上の同期表示を押してください）。`;
   }
   $('#syncBannerText').innerHTML = msg;
   el.hidden=false; el.classList.add('on');
@@ -1191,38 +1227,56 @@ function loadDraft(){
     _origStart: d?(d.start||''):'', _origEnd: d?(d.end||''):'', _origNote: d?(d.note||''):'',
     _origIds: new Set(es.map(e=>e.id)) };
 }
-function draftDirtyCheck(){ /* 明示保存方式 */ }
+
+/* 画面上部に固定表示する「いま入力している日」の見出し（下へスクロールしても見失わないように） */
+function updateStickyBar(){
+  const el=$('#dsDate'); if(!el || !draft) return;
+  const dt=draft.date, d=parseYmd(dt), w=d.getDay();
+  el.innerHTML = `${d.getMonth()+1}月${d.getDate()}日<span class="${w===0?'d-sun':w===6?'d-sat':''}" style="font-size:14px">（${WD[w]}）</span>`;
+  $('#dsStaff').textContent = staffName(draft.staffId);
+  const flags=[];
+  if(isHoliday(dt)) flags.push(`<span class="pill" style="background:#fbeaea;color:#c02626">休日${holidayName(dt)?'：'+esc(holidayName(dt)):''}</span>`);
+  else if(isRestDay(dt)) flags.push('<span class="pill" style="background:#fbeaea;color:#c02626">休日</span>');
+  if(pendingDates(draft.staffId).has(dt)) flags.push('<span class="pill warn">未同期</span>');
+  else if(getDay(draft.staffId,dt) || entriesOf(draft.staffId,dt).length) flags.push('<span class="pill ok">入力済</span>');
+  $('#dsFlags').innerHTML=flags.join(' ');
+  const tot=draft.entries.reduce((a,e)=>a+num(e.hours),0);
+  $('#dsTot').textContent = tot? '合計 '+fx(tot)+' h' : '';
+  const rec=getDay(draft.staffId,dt);
+  const de=$('#dEdited');
+  if(de) de.textContent = rec&&rec._u
+    ? '最終更新 '+new Date(rec._u).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})
+      + (rec._d===DEVICE? '（この端末）':'（他の端末）') : '';
+}
+/* 固定見出しがタブの真下に来るように、タブの高さを測ってCSSへ渡す */
+function syncNavHeight(){
+  const nav=document.querySelector('nav.tabs'); if(!nav) return;
+  document.documentElement.style.setProperty('--navh', nav.offsetHeight+'px');
+}
+window.addEventListener('resize', syncNavHeight);
 
 function renderEntry(){
   const eS=$('#eStaff');
   if(needFill(eS)) fillStaffSelect(eS, UI.staffId);
   if(!UI.staffId || !Array.from(eS.options).some(o=>o.value===UI.staffId)) UI.staffId=eS.value;
   eS.value=UI.staffId;
+  updateMyStaffBtn();
   if(!UI.date || UI.date.slice(0,7)!==UI.mk) UI.date = UI.mk+'-'+pad2(Math.min(new Date().getDate(), daysInMonth(UI.mk)));
   $('#eDate').value=UI.date;
   $('#eDate').min=UI.mk+'-01'; $('#eDate').max=UI.mk+'-'+pad2(daysInMonth(UI.mk));
 
   if(!draft || draft.staffId!==UI.staffId || draft.date!==UI.date) loadDraft();
 
-  const d=parseYmd(UI.date), w=d.getDay();
-  $('#dBig').textContent = (d.getMonth()+1)+'月'+d.getDate()+'日';
-  const ws=$('#dWeek'); ws.textContent='（'+WD[w]+'）';
-  ws.className='w '+(w===0?'d-sun':w===6?'d-sat':'');
-  const flags=[];
-  if(isHoliday(UI.date)) flags.push(`<span class="pill" style="background:#fbeaea;color:#c02626">休日指定${holidayName(UI.date)?'：'+esc(holidayName(UI.date)):''}</span>`);
-  else if(isRestDay(UI.date)) flags.push('<span class="pill" style="background:#fbeaea;color:#c02626">休日</span>');
-  if(draft._existed) flags.push('<span class="pill ok">入力済</span>');
-  $('#dFlags').innerHTML=flags.join(' ');
-  const rec=getDay(UI.staffId,UI.date);
-  $('#dEdited').textContent = rec&&rec._u ? '最終更新 '+new Date(rec._u).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+'（'+(rec._d||'')+'）' : '';
-
+  syncNavHeight();
   { const c=cfg(); timeOptions($('#eStart'), draft.start, t2m(c.defStart)); timeOptions($('#eEnd'), draft.end, t2m(c.defEnd)); }
   renderCalStrip();
+  updateBatchBar();
   renderEntryRows();
   renderNoteChips();
   renderRefPick();
   $('#eNote').value = draft.note||'';
   renderCalc();
+  updateStickyBar();
 }
 
 /* =========================================================================
@@ -1240,7 +1294,7 @@ function priorDaysWithData(staffId, beforeDate, limit){
     if(!r.total && !r.start && !r.end && !(r.note&&r.note.trim())) return;
     const dw=parseYmd(dt).getDay();
     const sites=r.entries.map(e=>siteName(e.siteId)).join('・');
-    const label=`${parseYmd(dt).getMonth()+1}/${parseYmd(dt).getDate()}(${WD[dw]}) ${fx(r.total)||0}h${sites?' ─ '+sites:''}${r.note?'（'+r.note+'）':''}`;
+    const label=`${parseYmd(dt).getMonth()+1}/${parseYmd(dt).getDate()}(${WD[dw]}) ${fx(r.total)||'0.0'}h${sites?' ─ '+sites:''}${r.note?'（'+r.note+'）':''}`;
     out.push({date:dt, label});
   });
   return out;
@@ -1248,7 +1302,7 @@ function priorDaysWithData(staffId, beforeDate, limit){
 function renderRefPick(){
   const sel=$('#refPick'); if(!sel) return;
   const list=priorDaysWithData(UI.staffId, UI.date, 25);
-  sel.innerHTML='<option value="">— 当日以前の入力から選ぶ —</option>'
+  sel.innerHTML='<option value="">— 以前の入力から選ぶ —</option>'
     + list.map(x=>`<option value="${x.date}">${esc(x.label)}</option>`).join('');
   $('#refLoad').disabled = !list.length;
   $('#refQuick').disabled = !list.length;
@@ -1271,9 +1325,27 @@ function loadFromDay(srcDate){
 $('#refLoad').onclick=()=>{ const v=$('#refPick').value; if(!v){ toast('参考にする日を選んでください', true); return; } loadFromDay(v); };
 $('#refQuick').onclick=()=>{ const list=priorDaysWithData(UI.staffId, UI.date, 1); if(!list.length){ toast('参考にできる過去の入力がありません', true); return; } loadFromDay(list[0].date); };
 
+/* この端末にだけ保存されていて、まだ送信されていない日を割り出す（カレンダーの●印用） */
+function pendingDates(staffId){
+  const set=new Set();
+  Object.keys(S.meta.pending||{}).forEach(k=>{
+    const i=k.indexOf('/'); if(i<0) return;
+    const t=k.slice(0,i), id=k.slice(i+1);
+    if(t==='day'){
+      const p=id.split('|');
+      if(p[0]===staffId && p[1]) set.add(p[1]);
+    } else if(t==='entry'){
+      const r=S.entry[id];
+      if(r && r.staffId===staffId && r.date) set.add(r.date);
+    }
+  });
+  return set;
+}
+
 function renderCalStrip(){
   const box=$('#calStrip'); const dates=monthDates(UI.mk);
   const first=parseYmd(dates[0]).getDay();
+  const unsent=pendingDates(UI.staffId);
   let h = WD.map((w,i)=>`<div class="hd" style="${i===0?'color:#c02626':i===6?'color:#1a63b8':''}">${w}</div>`).join('');
   for(let i=0;i<first;i++) h+='<div class="cd pad"></div>';
   dates.forEach(dt=>{
@@ -1281,37 +1353,69 @@ function renderCalStrip(){
     const rest=isRestDay(dt);
     const has=r.total>0 || !!(r.start&&r.end) || !!(r.note&&r.note.trim());
     const dd=parseYmd(dt).getDate();
-    let cls='cd'; if(dt===UI.date && !batchMode) cls+=' sel';
-    if(batchMode && batchDates.has(dt)) cls+=' batchon';
-    const wd=parseYmd(dt).getDay();
-    if(has) cls+=' has'; else if(rest) cls+=' rest'; else if(dt<=ymd(new Date()) && wd>=1 && wd<=5) cls+=' miss';
+    let cls='cd'; if(dt===UI.date) cls+=' sel';
+    if(batchDates.has(dt)) cls+=' batchon';
     const w=parseYmd(dt).getDay();
-    h+=`<button class="${cls}" data-d="${dt}"><span class="dd" style="${w===0||rest?'color:#c02626':w===6?'color:#1a63b8':''}">${dd}</span><br><span class="hh">${r.total? fx(r.total)+'h' : (has?'✓':(rest?'休':''))}</span></button>`;
+    if(has) cls+=' has'; else if(rest) cls+=' rest'; else if(dt<=ymd(new Date()) && w>=1 && w<=5) cls+=' miss';
+    const un=unsent.has(dt); if(un) cls+=' unsent';
+    h+=`<button class="${cls}" data-d="${dt}"><span class="dd" style="${w===0||rest?'color:#c02626':w===6?'color:#1a63b8':''}">${dd}</span><br><span class="hh">${r.total? fx(r.total)+'h' : (has?'✓':(rest?'休':''))}</span>${un?'<br><span class="unlbl">未同期</span>':''}</button>`;
   });
   box.innerHTML=h;
 }
+
+/* ---------------- 複数日をまとめて入力（モード切替なし） ----------------
+   ・ふつうに押す      … その日へ移動（選択中は、押した日を選択に追加／解除）
+   ・Shiftを押しながら … いま開いている日から押した日までを、日曜・休日を除いて選択
+   ・Ctrl（⌘）を押しながら／スマホの長押し … その日を1日だけ選択に追加・解除 */
+let batchDates=new Set();
+function toggleBatchDate(dt){
+  if(batchDates.has(dt)) batchDates.delete(dt); else batchDates.add(dt);
+  renderCalStrip(); updateBatchBar();
+}
+function selectRange(from, to){
+  const a=from<to?from:to, b=from<to?to:from;
+  batchDates=new Set();
+  monthDates(UI.mk).forEach(d=>{ if(d>=a && d<=b && !isRestDay(d)) batchDates.add(d); });
+  batchDates.add(UI.date);          // いま開いている日は休日でも対象に含める
+  renderCalStrip(); updateBatchBar();
+}
+function endBatchSelection(){ batchDates.clear(); renderCalStrip(); updateBatchBar(); }
+function updateBatchBar(){
+  const bar=$('#batchBar'); if(!bar) return;
+  const others=Array.from(batchDates).filter(d=>d!==UI.date);
+  bar.hidden = batchDates.size===0;
+  if(batchDates.size===0) return;
+  const lbl=Array.from(batchDates).sort().map(d=>d.slice(8).replace(/^0/,'')+'日').join('、');
+  $('#batchCount').innerHTML = `<b>${batchDates.size} 日を選択中</b>（${esc(lbl)}）　いまの画面の内容を、この日すべてに入力できます`;
+  $('#batchApply').disabled = others.length===0;
+}
 $('#calStrip').addEventListener('click', e=>{
   const b=e.target.closest('.cd[data-d]'); if(!b) return;
-  if(batchMode){ const dt=b.dataset.d; if(batchDates.has(dt)) batchDates.delete(dt); else batchDates.add(dt); renderCalStrip(); updateBatchBar(); return; }
+  const dt=b.dataset.d;
+  if(longPressFired){ longPressFired=false; return; }        // 長押しで選択した直後のクリックは無視
+  if(e.shiftKey){ selectRange(UI.date, dt); return; }
+  if(e.ctrlKey || e.metaKey){ toggleBatchDate(dt); return; }
+  if(batchDates.size){ toggleBatchDate(dt); return; }        // 選択中は、ふつうに押しても追加・解除
   if(!confirmProceedWithSave()) return;
-  UI.date=b.dataset.d; draft=null; render();
+  UI.date=dt; draft=null; render();
 });
-
-/* ---------------- 複数日にまとめて入力 ---------------- */
-let batchMode=false, batchDates=new Set();
-function updateBatchBar(){
-  $('#batchCount').textContent = batchDates.size? `${batchDates.size} 日を選択中` : '日付をカレンダーから選んでください（現在の日も含めて構いません）';
-  $('#batchApply').disabled = batchDates.size===0;
-}
-$('#batchToggle').onclick=()=>{
-  batchMode=!batchMode;
-  if(batchMode){ batchDates=new Set([UI.date]); $('#batchToggle').textContent='複数日入力を終了'; }
-  else { batchDates.clear(); $('#batchToggle').textContent='複数日にまとめて入力'; }
-  $('#batchBar').hidden=!batchMode;
-  renderCalStrip(); updateBatchBar();
-};
-$('#batchClear').onclick=()=>{ batchDates.clear(); renderCalStrip(); updateBatchBar(); };
-$('#batchEnd').onclick=()=>{ batchMode=false; batchDates.clear(); $('#batchBar').hidden=true; $('#batchToggle').textContent='複数日にまとめて入力'; renderCalStrip(); };
+/* スマホ用：長押しで1日ずつ選択 */
+let longPressTimer=null, longPressFired=false;
+$('#calStrip').addEventListener('pointerdown', e=>{
+  const b=e.target.closest('.cd[data-d]'); if(!b) return;
+  const dt=b.dataset.d;
+  longPressFired=false;
+  if(longPressTimer) clearTimeout(longPressTimer);
+  longPressTimer=setTimeout(()=>{
+    longPressTimer=null; longPressFired=true;
+    toggleBatchDate(dt);
+    try{ if(navigator.vibrate) navigator.vibrate(15); }catch(_){}
+  }, 450);
+});
+['pointerup','pointercancel','pointerleave','pointermove'].forEach(ev=>{
+  $('#calStrip').addEventListener(ev, ()=>{ if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; } });
+});
+$('#batchClear').onclick=()=> endBatchSelection();
 /* 下書き（draft）と同じ内容を、別の日付へ丸ごと書き込む（既存の内容は置き換える。
    まとめて入力は確認ダイアログで上書きに同意した上での操作なので、start/end/noteの
    3項目とも「今、意図して書き換えた」ものとして扱う） */
@@ -1323,10 +1427,7 @@ function commitDraftToDate(staffId, dt, src){
   else if(S.day[dayId] && !S.day[dayId]._x) del('day', dayId);
   entriesOf(staffId,dt).forEach(e=> del('entry', e.id));
   src.entries.forEach(e=>{ if(!e.siteId||!num(e.hours)) return;
-    put('entry', {id:uid(), staffId, date:dt, siteId:e.siteId, hours:Math.round(num(e.hours)*100)/100}); });
-}
-function endBatchMode(){
-  batchMode=false; batchDates.clear(); $('#batchBar').hidden=true; $('#batchToggle').textContent='複数日にまとめて入力';
+    put('entry', {id:uid(), staffId, date:dt, siteId:e.siteId, hours:h1(e.hours)}); });
 }
 $('#batchApply').onclick=()=>{
   if(!draft){ toast('先に現在の日の内容を入力してください', true); return; }
@@ -1337,12 +1438,12 @@ $('#batchApply').onclick=()=>{
   const src={start:draft.start, end:draft.end, note:draft.note, entries:draft.entries.filter(e=>e.siteId&&num(e.hours))};
   const existing=targets.filter(dt=> getDay(draft.staffId,dt) || entriesOf(draft.staffId,dt).length);
   const finish=(n,skipped)=>{
-    persist(true); Sync.schedule(1500); endBatchMode();
-    toast(skipped? `${n} 日に反映しました（入力済みの${skipped}日は除く）` : `${n} 日に反映しました`);
+    persist(true); Sync.schedule(1500); endBatchSelection();
+    toast(skipped? `${n} 日に入力しました（入力済みの${skipped}日は除く）` : `${n} 日に入力しました`);
     render();
   };
   const applyAll=()=>{
-    commitDraft();
+    commitDraft(true);
     targets.forEach(dt=> commitDraftToDate(draft.staffId, dt, src));
     finish(targets.length);
   };
@@ -1351,9 +1452,9 @@ $('#batchApply').onclick=()=>{
       `<p>選択した ${targets.length} 日のうち、既に入力済みの日が ${existing.length} 日あります（${existing.map(d=>d.slice(5)).join('、')}）。<br>上書きしてよろしいですか？</p>`,
       [
         {t:'キャンセル'},
-        {t:'未入力の日にだけ反映', fn:()=>{
+        {t:'未入力の日にだけ入力', fn:()=>{
           const only=targets.filter(dt=>existing.indexOf(dt)<0);
-          commitDraft();
+          commitDraft(true);
           only.forEach(dt=> commitDraftToDate(draft.staffId, dt, src));
           finish(only.length, existing.length);
         }},
@@ -1370,21 +1471,21 @@ function renderEntryRows(){
     const label = e.siteId ? esc(siteName(e.siteId))+(closed?'（終了）':'') : '<span class="ph">— 現場を選択 —</span>';
     return `<div class="ent" data-i="${i}">
       <button type="button" class="es sitebtn" data-i="${i}">${label}<span class="arrow">▾</span></button>
-      <div class="hbox"><button data-m="-0.5">−</button><input class="eh" type="number" step="0.25" min="0" max="24" value="${e.hours===''||e.hours==null?'':e.hours}" inputmode="decimal" placeholder="時間"><button data-m="0.5">＋</button></div>
+      <div class="hbox"><button data-m="-0.5">−</button><input class="eh" type="number" step="0.5" min="0" max="24" value="${e.hours===''||e.hours==null?'':e.hours}" inputmode="decimal" placeholder="時間"><button data-m="0.5">＋</button></div>
       <button class="del" title="削除">✕</button></div>`;
   }).join('');
-  $('#entCount').textContent = `合計 ${fx(draft.entries.reduce((a,e)=>a+num(e.hours),0))||0} 時間 / ${draft.entries.filter(e=>e.siteId).length} 現場`;
+  $('#entCount').textContent = `合計 ${fx(draft.entries.reduce((a,e)=>a+num(e.hours),0))||'0.0'} 時間 / ${draft.entries.filter(e=>e.siteId).length} 現場`;
 }
 $('#entList').addEventListener('input', e=>{
   const row=e.target.closest('.ent'); if(!row) return; const i=+row.dataset.i;
   if(e.target.classList.contains('eh')) draft.entries[i].hours=e.target.value;
-  $('#entCount').textContent = `合計 ${fx(draft.entries.reduce((a,e)=>a+num(e.hours),0))||0} 時間 / ${draft.entries.filter(e=>e.siteId).length} 現場`;
+  $('#entCount').textContent = `合計 ${fx(draft.entries.reduce((a,e)=>a+num(e.hours),0))||'0.0'} 時間 / ${draft.entries.filter(e=>e.siteId).length} 現場`;
   renderCalc(); scheduleAutosave();
 });
 $('#entList').addEventListener('click', e=>{
   const row=e.target.closest('.ent'); if(!row) return; const i=+row.dataset.i;
   if(e.target.closest('.sitebtn')){ openSitePicker(i); return; }
-  if(e.target.dataset.m){ const v=Math.max(0, Math.round((num(draft.entries[i].hours)+parseFloat(e.target.dataset.m))*100)/100);
+  if(e.target.dataset.m){ const v=Math.max(0, h1(num(draft.entries[i].hours)+parseFloat(e.target.dataset.m)));
     draft.entries[i].hours = v||''; renderEntryRows(); renderCalc(); scheduleAutosave(); }
   if(e.target.classList.contains('del')){ draft.entries.splice(i,1); renderEntryRows(); renderCalc(); scheduleAutosave(); }
 });
@@ -1421,8 +1522,8 @@ $('#addEnt').onclick=()=>{ draft.entries.push({id:uid(), siteId:'', hours:''}); 
 $('#fillRest').onclick=()=>{
   const c=cfg(); const t=draft.entries.reduce((a,e)=>a+num(e.hours),0);
   const last=draft.entries[draft.entries.length-1];
-  if(!last) return; const diff=Math.round(((c.stdHours||7)-t)*100)/100;
-  last.hours = Math.max(0, Math.round((num(last.hours)+diff)*100)/100) || '';
+  if(!last) return; const diff=h1((c.stdHours||7)-t);
+  last.hours = Math.max(0, h1(num(last.hours)+diff)) || '';
   renderEntryRows(); renderCalc(); scheduleAutosave();
 };
 $('#eStart').onchange=e=>{ draft.start=e.target.value; renderCalc(); scheduleAutosave(); };
@@ -1430,9 +1531,21 @@ $('#eEnd').onchange=e=>{ draft.end=e.target.value; renderCalc(); scheduleAutosav
 $('#eNote').oninput=e=>{ draft.note=e.target.value; scheduleAutosave(); };
 $('#qStd').onclick=()=>{ const c=cfg(); draft.start=c.defStart; draft.end=c.defEnd;
   $('#eStart').value=c.defStart; $('#eEnd').value=c.defEnd; renderCalc(); scheduleAutosave(); };
-$('#qClear').onclick=()=>{ draft.start=''; draft.end=''; $('#eStart').value=''; $('#eEnd').value=''; renderCalc(); scheduleAutosave(); };
 $('#eStaff').onchange=e=>{ if(!confirmProceedWithSave()){ e.target.value=UI.staffId; return; }
-  UI.staffId=e.target.value; draft=null; endBatchMode(); render(); };
+  UI.staffId=e.target.value; draft=null; batchDates.clear(); render(); };
+/* 入力画面から「この端末の既定の作業者」を設定・解除できるようにする */
+function updateMyStaffBtn(){
+  const b=$('#eMyStaff'); if(!b) return;
+  const on = !!(S.meta.myStaff && S.meta.myStaff===UI.staffId);
+  b.classList.toggle('primary', on);
+  b.textContent = on? '★ この端末の既定' : '既定にする';
+  b.title = on? 'この端末を開いたとき最初に選ばれる作業者です（押すと解除）' : 'この作業者を、この端末を開いたときの既定にします';
+}
+$('#eMyStaff').onclick=()=>{
+  if(S.meta.myStaff===UI.staffId){ S.meta.myStaff=''; toast('この端末の既定の作業者を解除しました'); }
+  else { S.meta.myStaff=UI.staffId; toast('この端末の既定の作業者にしました'); }
+  persist(true); updateMyStaffBtn();
+};
 $('#eDate').onchange=e=>{ if(!e.target.value) return;
   if(!confirmProceedWithSave()){ e.target.value=UI.date; return; }
   UI.date=e.target.value; if(UI.date.slice(0,7)!==UI.mk) UI.mk=UI.date.slice(0,7); draft=null; render(); };
@@ -1442,19 +1555,45 @@ function moveDay(n){
   const nd=addDays(UI.date,n); UI.date=nd; if(nd.slice(0,7)!==UI.mk) UI.mk=nd.slice(0,7); draft=null; render();
 }
 function renderNoteChips(){
-  $('#noteChips').innerHTML=(chipsFor(UI.staffId)||[]).map(t=>`<button class="chip" data-t="${esc(t)}">${esc(t)}</button>`).join('');
+  const list=chipsFor(UI.staffId)||[];
+  $('#noteChips').innerHTML = list.length
+    ? list.map(t=>`<span class="chipwrap"><button class="cmain" data-t="${esc(t)}">${esc(t)}</button><button class="cx" data-x="${esc(t)}" title="この候補を削除">✕</button></span>`).join('')
+    : '<span class="hint">入力した作業内容が、次回から候補ボタンになります</span>';
 }
 $('#noteChips').addEventListener('click', e=>{
-  const b=e.target.closest('.chip'); if(!b) return;
+  const x=e.target.closest('.cx');
+  if(x){ removeNoteChip(x.dataset.x); return; }
+  const b=e.target.closest('.cmain'); if(!b) return;
   const cur=$('#eNote').value.trim();
   const t=b.dataset.t;
   $('#eNote').value = cur? (cur.split('・').includes(t)? cur : cur+'・'+t) : t;
   draft.note=$('#eNote').value;
   scheduleAutosave();
 });
-/* 作業内容候補の編集（社員本人が、自分専用の候補リストにできる） */
-const CHIP_PRESET_KANRI=['現場管理','書類作成','見積書作成','積算','工程管理','安全書類作成','現場調査','打合せ','立会検査','写真整理'];
-const CHIP_PRESET_GENBA=['現場作業','草刈','除草','土工','舗装','解体','設備工事','点検','清掃','資材運搬'];
+/* 候補の削除：入力画面から直接（編集画面に入らなくても消せる） */
+function removeNoteChip(t){
+  const st=UI.staffId; const s=S.staff[st]; if(!s || s._x) return;
+  const list=(chipsFor(st)||[]).slice();
+  const i=list.indexOf(t); if(i<0) return;
+  list.splice(i,1);
+  put('staff', Object.assign({}, s, {chips:list}));
+  renderNoteChips(); Sync.schedule();
+  toast('「'+t+'」を候補から削除しました');
+}
+/* 入力した作業内容を、その人の候補として自動的に覚える（保存の確定時だけ） */
+const CHIP_MAX=30;
+function learnNoteChips(staffId, note){
+  const txt=String(note||'').trim(); if(!txt) return;
+  const s=S.staff[staffId]; if(!s || s._x) return;
+  const parts=txt.split(/[・、,，\n\r]+/).map(x=>x.trim()).filter(x=> x && x.length<=20);
+  if(!parts.length) return;
+  const list=(chipsFor(staffId)||[]).slice();
+  let changed=false;
+  parts.forEach(t=>{ if(list.indexOf(t)<0){ list.push(t); changed=true; } });
+  if(!changed) return;
+  while(list.length>CHIP_MAX) list.shift();
+  put('staff', Object.assign({}, s, {chips:list}));
+}
 function openChipEditor(){
   const st=UI.staffId; if(!st){ toast('作業者を選択してください', true); return; }
   const s=S.staff[st];
@@ -1466,22 +1605,16 @@ function openChipEditor(){
       : '<span class="hint">候補がありません</span>';
   }
   const body = `
-    <p class="hint" style="margin:0 0 10px">ここで編集すると、${esc(staffName(st))} さん専用の候補になります（会社共通の初期候補は変わりません）。押すと削除できます。</p>
+    <p class="hint" style="margin:0 0 10px">${esc(staffName(st))} さんの候補です。入力した作業内容は自動で候補に加わります。押すと削除、下の欄から手で追加もできます。</p>
     <div class="chips" id="chipEditList" style="margin-bottom:10px"></div>
     <div class="row">
-      <div class="fld grow"><label>新しい候補</label><input type="text" id="chipEditInput" placeholder="例）足場解体"></div>
+      <div class="fld grow"><label>候補を手で追加</label><input type="text" id="chipEditInput" placeholder="例）足場解体"></div>
       <button class="btn sm" id="chipEditAdd">＋ 追加</button>
-    </div>
-    <div class="fld" style="margin-top:12px"><label>よく使う例をまとめて追加</label>
-      <div class="chips">
-        <button class="chip" id="chipPresetKanri">管理業務の例</button>
-        <button class="chip" id="chipPresetGenba">現場作業の例</button>
-      </div>
     </div>`;
   dialog(esc(staffName(st))+' さんの作業内容候補', body, [
-    {t:'会社の初期候補に戻す', fn:()=>{
+    {t:'すべて消す', fn:()=>{
       const r=S.staff[st]; if(r) put('staff', Object.assign({},r,{chips:[]}));
-      Sync.schedule(); renderNoteChips(); toast('会社共通の候補に戻しました');
+      Sync.schedule(); renderNoteChips(); toast('候補をすべて消しました');
     }},
     {t:'キャンセル'},
     {t:'保存', cls:'primary', fn:()=>{
@@ -1492,9 +1625,6 @@ function openChipEditor(){
   paint();
   $('#chipEditList').onclick=e=>{ const b=e.target.closest('button[data-i]'); if(!b) return; list.splice(+b.dataset.i,1); paint(); };
   $('#chipEditAdd').onclick=()=>{ const v=$('#chipEditInput').value.trim(); if(!v) return; if(!list.includes(v)) list.push(v); $('#chipEditInput').value=''; paint(); $('#chipEditInput').focus(); };
-  const addAll=(arr)=>{ arr.forEach(t=>{ if(!list.includes(t)) list.push(t); }); paint(); };
-  $('#chipPresetKanri').onclick=()=> addAll(CHIP_PRESET_KANRI);
-  $('#chipPresetGenba').onclick=()=> addAll(CHIP_PRESET_GENBA);
   $('#chipEditInput').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); $('#chipEditAdd').click(); } };
 }
 $('#editChips').onclick=()=>openChipEditor();
@@ -1508,7 +1638,7 @@ function confirmProceedWithSave(){
     return confirm('時間を入れた行に現場が選ばれていないため、このままでは保存できません。\n保存せずに移動しますか？（この行の内容は失われます）');
   }
   if(confirm('保存しますか？\n\n［OK］保存してから移動します\n［キャンセル］この画面にとどまります')){
-    commitDraft();
+    commitDraft(true);
     return true;
   }
   return false;
@@ -1530,7 +1660,7 @@ function hasEdits(){
    ②現場明細（entries）は、下書きを開いた時点に存在した行だけを削除の対象にする。
      開いたあとに他の端末が追加した行は、自分がまだ知らないだけなので消さない
      （＝次にこの日を開き直すと両方の内容が見える）。 */
-function commitDraft(){
+function commitDraft(final){
   if(!draft || !draft.staffId) return false;
   const st=draft.staffId, dt=draft.date;
   const bad=draft.entries.find(e=> !e.siteId && num(e.hours)>0);
@@ -1558,20 +1688,36 @@ function commitDraft(){
   draft.entries.forEach(e=>{
     if(!e.siteId || !num(e.hours)) return;
     keep[e.id]=1;
-    put('entry', {id:e.id, staffId:st, date:dt, siteId:e.siteId, hours:Math.round(num(e.hours)*100)/100});
+    put('entry', {id:e.id, staffId:st, date:dt, siteId:e.siteId, hours:h1(e.hours)});
   });
   entriesOf(st,dt).forEach(e=>{ if(origIds.has(e.id) && !keep[e.id]) del('entry', e.id); });
+  /* 入力が確定したとき（保存ボタン・日付や作業者の切り替え・画面を離れるとき）だけ、
+     作業内容をその人の候補として覚える（入力の途中の文字を覚えてしまわないように） */
+  if(final) learnNoteChips(st, val.note);
   persist(true);
   Sync.schedule(1500);
   return true;
 }
-/* 保存（ボタン／Ctrl+S）：保存してフォームを閉じる */
-function saveDraft(silent){
-  if(!draft.staffId){ toast('作業者を選択してください', true); return false; }
+/* 保存（ボタン／Ctrl+S）：この端末へ保存し、つながっていればその場で同期する */
+async function saveDraft(){
+  if(!draft || !draft.staffId){ toast('作業者を選択してください', true); return false; }
   const bad=draft.entries.find(e=> !e.siteId && num(e.hours)>0);
   if(bad){ toast('時間を入れた行に現場が選ばれていません', true); return false; }
-  commitDraft();
-  if(!silent) toast('保存しました');
+  commitDraft(true);
+  const btn=$('#eSave');
+  if(!Sync.configured()){
+    toast('この端末に保存しました'); draft=null; render(); return true;
+  }
+  if(!navigator.onLine){
+    toast('この端末に保存しました（電波が戻ると自動で送信します）'); draft=null; render(); return true;
+  }
+  const label=btn? btn.textContent : '';
+  if(btn){ btn.disabled=true; btn.textContent='同期しています…'; }
+  const r=await Sync.run('save');
+  if(btn){ btn.disabled=false; btn.textContent=label||'保存して同期'; }
+  if(r.ok) toast(`保存して同期しました（送信 ${r.sent} 件／受信 ${r.recv} 件）`);
+  else if(r.offline) toast('この端末に保存しました（電波が戻ると自動で送信します）');
+  else toast('この端末に保存しました。同期はできませんでした：'+(r.error||''), true);
   draft=null; render();
   return true;
 }
@@ -1590,23 +1736,19 @@ function scheduleAutosave(){
 /* 入力済み表示・最終更新時刻だけを更新（フォーカス中の入力欄には触れない） */
 function refreshDayFlags(){
   if(!draft || UI.view!=='entry') return;
-  const flags=[];
-  if(isHoliday(draft.date)) flags.push(`<span class="pill" style="background:#fbeaea;color:#c02626">休日指定${holidayName(draft.date)?'：'+esc(holidayName(draft.date)):''}</span>`);
-  else if(isRestDay(draft.date)) flags.push('<span class="pill" style="background:#fbeaea;color:#c02626">休日</span>');
-  const rec=getDay(draft.staffId,draft.date);
-  if(rec) flags.push('<span class="pill ok">入力済</span>');
-  const df=$('#dFlags'); if(df) df.innerHTML=flags.join(' ');
-  const de=$('#dEdited');
-  if(de) de.textContent = rec&&rec._u ? '最終更新 '+new Date(rec._u).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+'（'+(rec._d||'')+'）' : '';
+  updateStickyBar();
   renderCalStrip();
 }
 $('#eSave').onclick=()=>saveDraft();
-$('#eDelete').onclick=()=>{
-  if(!confirm(staffName(UI.staffId)+' の '+UI.date+' の入力を消去します。よろしいですか？')) return;
-  entriesOf(UI.staffId,UI.date).forEach(e=>del('entry',e.id));
-  const id=UI.staffId+'|'+UI.date; if(S.day[id]) del('day',id);
-  persist(true); draft=null; toast('消去しました'); Sync.schedule(1500); render();
-};
+/* 備考の入力を終えて他へ移ったときに、確定として保存する（＝候補として覚える）。
+   候補ボタンを押したときは、まだ入力の途中なので覚えない */
+$('#eNote').addEventListener('blur', (e)=>{
+  if(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('#noteChips')) return;
+  if(!draft || !draft.staffId || !hasEdits()) return;
+  const bad=draft.entries.find(e=> !e.siteId && num(e.hours)>0);
+  if(bad) return;
+  if(commitDraft(true)) refreshDayFlags();
+});
 
 function renderCalc(){
   const c=cfg();
@@ -1619,7 +1761,7 @@ function renderCalc(){
   else { kitei=Math.min(total,std); if(total>std) over=Math.max(0,Math.round((total-std-night)*100)/100); }
   const cells=[['合計',total,'t-sum'],['所定',kitei,'t-kt'],['時間外',over,'t-ot'],['深夜',night,'t-nt'],['休日',hol,'t-hd']];
   $('#calcBox').innerHTML = cells.map(([k,v,cl])=>
-    `<div class="${cl}${v?'':' zero'}"><div class="k">${k}</div><div class="v">${v? fx(v):'0'}</div></div>`).join('')
+    `<div class="${cl}${v?'':' zero'}"><div class="k">${k}</div><div class="v">${v? fx(v):'0.0'}</div></div>`).join('')
     + '<div class="fill"></div>';
   const msgs=[];
   if(draft.start&&draft.end){ let s=t2m(draft.start),e=t2m(draft.end); if(e<=s)e+=1440;
@@ -1628,9 +1770,9 @@ function renderCalc(){
   if(rest) msgs.push('この日は休日のため、全時間を「休日」に計上します。');
   if(!total && (draft.start||draft.end)) msgs.push('現場ごとの作業時間がまだ入力されていません。');
   $('#calcNote').textContent = msgs.join('　');
+  updateStickyBar();
 }
 </script>
-
 <script>
 /* =========================================================================
    ② 月間一覧
@@ -1672,7 +1814,7 @@ function renderMonth(){
   h+=`</tbody><tfoot><tr><td colspan="4">合計</td>
     <td>${fx(mc.total.kitei)||'·'}</td><td>${fx(mc.total.over)||'·'}</td><td>${fx(mc.total.night)||'·'}</td><td>${fx(mc.total.hol)||'·'}</td>
     ${used.map(id=>`<td>${fx(sT[id])||'·'}</td>`).join('')}
-    <td class="l">総作業時間 ${fx(mc.total.total)||0} 時間</td></tr></tfoot></table>`;
+    <td class="l">総作業時間 ${fx(mc.total.total)||'0.0'} 時間</td></tr></tfoot></table>`;
   $('#monthTable').innerHTML=h;
   $('#mWarn').innerHTML = miss? `<span class="pill warn">未入力の平日 ${miss} 日</span>` : `<span class="pill ok">未入力なし</span>`;
 }
@@ -1765,7 +1907,6 @@ function downloadBlob(data, mime, name){
   setTimeout(()=>{URL.revokeObjectURL(u); a.remove();},400);
 }
 </script>
-
 <script>
 /* =========================================================================
    ⑤ 管理・設定
@@ -1897,7 +2038,7 @@ function renderAdmin(){
       <span class="spacer"></span>
       <button class="btn primary" id="saveCfg" style="align-self:flex-end">設定を保存</button>
     </div>
-    <div class="hint" style="margin-top:10px">作業内容候補（チップ）の会社共通デフォルトは、社員が個別に上書きしていない場合に使われます：${(c.noteChips||[]).map(t=>esc(t)).join('・')}</div>
+    <div class="hint" style="margin-top:10px">作業内容の候補ボタンは、日報入力画面で入力した内容を各自が自動的に覚えていきます（候補の削除は入力画面の候補の「✕」から、追加は「候補の編集」からできます）。</div>
   </div></div>
 
   <div class="card"><h3>💾 データ</h3><div class="body">
@@ -2163,7 +2304,6 @@ function importHolidayText(txt){
 }
 function openSyncPanel(){ setView('admin'); setTimeout(()=>{ const el=$('#btnSyncNow'); if(el) el.scrollIntoView({block:'center'}); },60); }
 </script>
-
 <script>
 /* =========================================================================
    ④ 印刷帳票
@@ -2178,7 +2318,6 @@ function renderPrintTab(){
 }
 $('#pKind').onchange=()=>{ $('#pStaff').style.display=($('#pKind').value==='daily1')?'':'none'; buildPrint(); };
 $('#pStaff').onchange=buildPrint;
-$('#pSkipEmpty').onchange=buildPrint;
 $('#pDo').onclick=()=>{ window.print(); };
 
 function pHeadHTML(title, right){
@@ -2187,9 +2326,6 @@ function pHeadHTML(title, right){
     <div><div class="m">${jpMonth(UI.mk)}${c.company?'　'+esc(c.company):''}</div><div class="t">${title}</div></div>
     ${right||''}
     </div>`;
-}
-function pFootHTML(extra){
-  return `<div class="pfoot"><span>${esc(extra||'')}</span><span>出力：${new Date().toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</span></div>`;
 }
 
 /* ---- ① 個人別作業集計日報 ---- */
@@ -2241,8 +2377,7 @@ function sheetDaily(staffId){
     h+=`</tbody><tfoot><tr><td colspan="4">合　計</td>
         <td>${fx(mc.total.kitei)||''}</td><td>${fx(mc.total.over)||''}</td><td>${fx(mc.total.night)||''}</td><td>${fx(mc.total.hol)||''}</td>
         ${sites.map(id=>`<td>${fx(siteTot[id])||''}</td>`).join('')}
-        ${noteW?`<td class="txt">総作業時間 ${fx(mc.total.total)||0} h</td>`:''}</tr></tfoot></table>`;
-    h+=pFootHTML(pi===0?`所定＝1日 ${c.stdHours} 時間まで／時間外＝所定超過分／深夜勤＝${c.nightFrom}〜${c.nightTo}／休日＝日曜・休日指定日`:'');
+        ${noteW?`<td class="txt">総作業時間 ${fx(mc.total.total)||'0.0'} h</td>`:''}</tr></tfoot></table>`;
     h+='</div>';
     return h;
   }).join('');
@@ -2253,7 +2388,7 @@ const SITE_ROWS_PER_PAGE = 36, STAFF_PER_PAGE = 8;
 function chunk(arr,n){ const o=[]; for(let i=0;i<Math.max(1,Math.ceil(arr.length/n));i++) o.push(arr.slice(i*n,(i+1)*n)); return o; }
 
 function sheetSiteMatrix(){
-  const mk=UI.mk; const staff=staffForMonth(mk).filter(s=> !$('#pSkipEmpty').checked || monthCalc(s.id,mk).total.total>0);
+  const mk=UI.mk; const staff=staffForMonth(mk).filter(s=> monthCalc(s.id,mk).total.total>0);
   const used=sitesUsed(null,mk);
   const m={}; entriesOfMonth(mk).forEach(e=>{ (m[e.siteId]=m[e.siteId]||{})[e.staffId]=((m[e.siteId]||{})[e.staffId]||0)+num(e.hours); });
   const colT={}; let g=0;
@@ -2276,7 +2411,7 @@ function sheetSiteMatrix(){
     if(pi===pages.length-1)
       h+=`</tbody><tfoot><tr><td>合　計</td>${staff.map(s=>`<td>${fx(colT[s.id])||''}</td>`).join('')}<td>${fx(g)}</td></tr></tfoot></table>`;
     else h+='</tbody></table>';
-    h+=pFootHTML(`現場数 ${used.length}／人数 ${staff.length}`)+'</div>';
+    h+='</div>';
     return h;
   }).join('');
 }
@@ -2284,7 +2419,7 @@ function sheetSiteMatrix(){
 /* ---- ③ 個人集計表 ---- */
 function sheetStaffMatrix(){
   const mk=UI.mk, dates=monthDates(mk);
-  const staff=staffForMonth(mk).filter(s=> !$('#pSkipEmpty').checked || monthCalc(s.id,mk).total.total>0);
+  const staff=staffForMonth(mk).filter(s=> monthCalc(s.id,mk).total.total>0);
   const dw=(281-24-13-14)/dates.length;
   const pages=chunk(staff, STAFF_PER_PAGE);
   const kinds=[['所定','kitei'],['時間外','over'],['深夜','night'],['休日','hol']];
@@ -2306,16 +2441,16 @@ function sheetStaffMatrix(){
       });
     });
     if(!grp.length) h+='<tr><td colspan="99">（対象者なし）</td></tr>';
-    h+='</tbody></table>'+pFootHTML('単位：時間　網掛けは日曜・休日指定日')+'</div>';
+    h+='</tbody></table></div>';
     return h;
   }).join('');
 }
 
 function buildPrint(){
   const kind=$('#pKind').value, mk=UI.mk;
-  const skip=$('#pSkipEmpty').checked;
   let html='';
-  const targets = staffForMonth(mk).filter(s=> !skip || monthCalc(s.id,mk).total.total>0 || live('day').some(d=>d.staffId===s.id&&d.date.slice(0,7)===mk));
+  /* 実績のない人は帳票に出さない（白紙のページが出ないように） */
+  const targets = staffForMonth(mk).filter(s=> monthCalc(s.id,mk).total.total>0 || live('day').some(d=>d.staffId===s.id&&d.date.slice(0,7)===mk));
   if(kind==='daily') html = targets.map(s=>sheetDaily(s.id)).join('') || '<div class="empty">対象者がいません</div>';
   else if(kind==='daily1') html = sheetDaily($('#pStaff').value||UI.staffId);
   else if(kind==='site') html = sheetSiteMatrix();
@@ -2339,7 +2474,6 @@ function fitPreview(){
 }
 window.addEventListener('resize', ()=>{ if(UI.view==='print') fitPreview(); });
 </script>
-
 <script>
 /* =========================================================================
    GitHub方式の導入手順（ヘルプ）
@@ -2392,6 +2526,8 @@ async function boot(){
   const linked = consumeSetupLink();
   migrateHolidaySeed();
   migrateRemovedStaff();
+  migrateClearChips();
+  migrateClearChips2();
   autoArchiveSites();
 
   const t=new Date();
@@ -2406,10 +2542,39 @@ async function boot(){
   }
   render();
   Sync.start();
+  setTimeout(maybeMonthEndReminder, 3500);   // 起動時の自動同期を待ってから確認する
   if(linked){ toast('設定を読み込みました。同期しています…'); Sync.schedule(300); }
   if('serviceWorker' in navigator && location.protocol.startsWith('http')){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
   }
+}
+
+/* 月末が近い時期（休日を除いた稼働日の残り3日以内）に起動したとき、
+   同期されていない入力がこの端末に残っていれば、その日1回だけ注意をうながす */
+function maybeMonthEndReminder(){
+  try{
+    if(!Sync.configured()) return;
+    if(!nearMonthEnd(3)) return;
+    const pend=Sync.pendingCount();
+    if(pend<=0) return;
+    const today=ymd(new Date());
+    if(S.meta.endWarnOn===today) return;
+    S.meta.endWarnOn=today; persist(true);
+    const offline=!navigator.onLine;
+    dialog('月末が近づいています', `
+      <p style="margin:0 0 10px;font-size:14px;line-height:1.8">この端末に、<b>まだ同期されていない入力が ${pend} 件</b> あります。<br>
+      このままでは他の端末や月末の集計・帳票に反映されません。</p>
+      <p class="hint" style="margin:0">${offline
+        ? 'いまは電波が届いていないようです。電波の届く場所でこのアプリを開くと自動で送信されます。'
+        : '「今すぐ同期する」を押すと、その場で送信できます。'}</p>`,
+      [ {t:'あとで'},
+        {t:'今すぐ同期する', cls:'primary', fn:async()=>{
+          toast('同期しています…');
+          const r=await Sync.run('monthend');
+          toast(r.ok? `同期しました（送信 ${r.sent} 件）` : '同期できませんでした：'+(r.error||'オフライン'), !r.ok);
+          render();
+        }} ]);
+  }catch(e){ console.warn('month-end reminder skipped', e); }
 }
 
 /* 初回のみ：同梱データを取り込む */
@@ -2456,6 +2621,35 @@ function migrateRemovedStaff(){
     else del('staff', id);
   });
   S.meta.staffCleanup1=true;
+  persist(true);
+}
+
+/* 作業内容の候補を、あらかじめ用意した固定リストから「入力した内容を覚えていく方式」に切り替える。
+   以前の版で入っていた会社共通の初期候補と、それをそのままコピーしただけの個人の候補を一度だけ空にする
+   （本人が手で編集した候補は残す） */
+const OLD_DEFAULT_CHIPS=['現場管理','書類作成','見積書作成','現場調査','打合せ','講習','安全教育','健康診断','有給休暇','休日'];
+function migrateClearChips(){
+  if(S.meta.chipsCleared1) return;
+  try{
+    const c=cfg();
+    const same=(a,b)=> Array.isArray(a) && a.length===b.length && a.every((x,i)=>x===b[i]);
+    if(Array.isArray(c.noteChips) && c.noteChips.length) put('config', Object.assign({}, c, {noteChips:[]}));
+    live('staff').forEach(s=>{ if(same(s.chips, OLD_DEFAULT_CHIPS)) put('staff', Object.assign({}, s, {chips:[]})); });
+  }catch(e){ console.warn('chips migrate skipped', e); }
+  S.meta.chipsCleared1=true;
+  persist(true);
+}
+
+/* ユーザーからの再度の依頼により、作業内容・備考の候補を無条件でもう一度すべて空にする
+   （会社共通の候補・各作業者の個人候補のどちらも、内容を問わず一度だけクリアする） */
+function migrateClearChips2(){
+  if(S.meta.chipsCleared2) return;
+  try{
+    const c=cfg();
+    if(Array.isArray(c.noteChips) && c.noteChips.length) put('config', Object.assign({}, c, {noteChips:[]}));
+    live('staff').forEach(s=>{ if(Array.isArray(s.chips) && s.chips.length) put('staff', Object.assign({}, s, {chips:[]})); });
+  }catch(e){ console.warn('chips migrate2 skipped', e); }
+  S.meta.chipsCleared2=true;
   persist(true);
 }
 
