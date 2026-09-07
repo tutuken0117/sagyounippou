@@ -906,7 +906,8 @@ async function ghCheck(){
   const j=await res.json();
   if(j.permissions && j.permissions.push===false)
     return {ok:false, msg:'このトークンでは書き込みができません（トークンの Contents を Read and write にしてください）'};
-  return {ok:true, msg:'「'+j.full_name+'」に接続できました'+(j.private?'（非公開リポジトリ）':''), warn: j.private? '' : 'このリポジトリは公開されています。社員名や勤務時間が誰でも見られる状態のため、GitHubの Settings から Private に変更することを強くおすすめします。'};
+  /* 公開・非公開はそのまま事実として伝えるだけにする（警告は出さない） */
+  return {ok:true, msg:'「'+j.full_name+'」に接続できました'+(j.private?'（非公開リポジトリ）':'（公開リポジトリ）')};
 }
 
 /* この端末が持つ全レコードのスナップショット（削除済みのタブストーンも含む） */
@@ -2161,8 +2162,7 @@ function bindAdmin(){
     if(r.ok){
       /* 最初に設定した端末の保存先を、全社共通として他の端末にも知らせる */
       if(cfg().ghRepo!==S.meta.ghRepo) put('config', Object.assign({}, cfg(), {ghRepo:S.meta.ghRepo}));
-      if(r.warn) dialog('接続できました', '<p>'+esc(r.msg)+'</p><p style="color:#c02626">'+esc(r.warn)+'</p>', [{t:'閉じる', cls:'primary'}]);
-      else toast(r.msg);
+      toast(r.msg);
       renderAdmin(); Sync.schedule(300);
     }else{
       dialog('接続できませんでした',
