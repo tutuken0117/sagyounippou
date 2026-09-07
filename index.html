@@ -554,7 +554,7 @@ let S = null;  // state
 function blankState(){
   const s={ v:1, meta:{ pending:{}, lastSyncAt:0, autoSync:true, myStaff:'',
     ghRepo:'', peerVer:{},
-    holidaySeeded:false, staffCleanup1:false, siteArchiveSince:0 } };
+    holidaySeeded:false, staffCleanup1:false, siteArchiveSince:0, pendingSince:0 } };
   TYPES.forEach(t=> s[t]={});
   s.config['config']=Object.assign({},DEF_CONFIG,{_u:now(),_d:DEVICE});
   return s;
@@ -609,9 +609,10 @@ function del(type, id){
 }
 function live(type){ return Object.values(S[type]).filter(r=>!r._x); }
 
-/* LWW マージ */
+/* LWW マージ（全体を丸ごと比較） */
 function mergeRec(type, rec){
   if(!rec || !rec.id) return false;
+  if(type==='day') return mergeDayRec(rec);   // dayは項目ごとにマージする（下記）
   const cur = S[type][rec.id];
   if(cur){
     if((cur._u||0) > (rec._u||0)) return false;
@@ -619,6 +620,37 @@ function mergeRec(type, rec){
   }
   S[type][rec.id]=rec;
   if(type==='staff'||type==='site'||type==='config') masterRev++;
+  return true;
+}
+/* dayレコード（1人・1日ぶんの始業/終業/備考）は、start・end・noteをそれぞれ別々に
+   「あとから更新したほうが残る」でマージする。同じ日を2台の端末がほぼ同時に別の
+   項目（例：片方が時刻、もう片方が備考）を直しても、片方が丸ごと消えないようにするため。
+   レコードごと削除（_x:true）された場合だけは、これまでどおりレコード全体をLWW比較する。 */
+function mergeDayRec(rec){
+  const cur = S.day[rec.id];
+  if(!cur){ S.day[rec.id]=rec; return true; }
+  if(rec._x || cur._x){
+    if((cur._u||0) > (rec._u||0)) return false;
+    if((cur._u||0) === (rec._u||0) && String(cur._d||'') >= String(rec._d||'')) return false;
+    S.day[rec.id]=rec; return true;
+  }
+  const curUf=cur._uf||{}, recUf=rec._uf||{};
+  const fields=['start','end','note'];
+  let changed=false;
+  const merged=Object.assign({}, cur);
+  const newUf={};
+  fields.forEach(k=>{
+    const ct=curUf[k]!=null?curUf[k]:(cur._u||0);
+    const rt=recUf[k]!=null?recUf[k]:(rec._u||0);
+    if(rt>ct || (rt===ct && String(rec._d||'')>String(cur._d||''))){
+      merged[k]=rec[k]; newUf[k]=rt; changed=true;
+    } else newUf[k]=ct;
+  });
+  if(!changed) return false;
+  merged._uf=newUf;
+  merged._u=Math.max(cur._u||0, rec._u||0);
+  merged._d=(merged._u===(rec._u||0))? rec._d : cur._d;
+  S.day[rec.id]=merged;
   return true;
 }
 
@@ -1086,24 +1118,43 @@ $('#syncChip').onclick=async()=>{
   openSyncPanel();
 };
 
-/* ---------------- 月末の同期状況バナー ---------------- */
+/* ---------------- 同期状況バナー ----------------
+   月末（稼働最終日を過ぎている）は今までどおり注意する。それに加えて、月末でなくても
+   「この端末に未送信のデータがしばらく（5分以上）たまっている」場合や「同期エラーが
+   続いている」場合は、その場で同期を促す注意文を出す（＝端末に貯まったままになるのを防ぐ）。 */
 let bannerDismissedOn='';
 function updateSyncBanner(){
   const el=$('#syncBanner'); if(!el) return;
   const configured = Sync.configured();
+  if(!configured){ el.hidden=true; el.classList.remove('on'); return; }
+  const pend=Sync.pendingCount();
+  const st=Sync.status();
+  if(pend>0){ if(!S.meta.pendingSince){ S.meta.pendingSince=now(); persist(); } }
+  else if(S.meta.pendingSince){ S.meta.pendingSince=0; persist(); }
+  const pendingMs = pend>0 && S.meta.pendingSince ? (now()-S.meta.pendingSince) : 0;
   const today=ymd(new Date());
   const mk=monthKey(new Date());
   const lwd=lastWorkDay(mk);
   const atOrPastMonthEnd = today>=lwd;
-  const pend=Sync.pendingCount();
-  const st=Sync.status();
-  const trouble = pend>0 || st.k==='error';
-  const show = configured && atOrPastMonthEnd && trouble && bannerDismissedOn!==today+':'+pend+':'+st.k;
+  const errTrouble = st.k==='error';
+  const staleTrouble = pend>0 && pendingMs>5*60*1000;                 // 5分たっても送信できていない
+  const monthEndTrouble = atOrPastMonthEnd && (pend>0 || errTrouble);
+  const trouble = errTrouble || staleTrouble || monthEndTrouble;
+  const dismissKey = today+':'+pend+':'+st.k+':'+(monthEndTrouble?'m':(staleTrouble?'s':'e'));
+  const show = trouble && bannerDismissedOn!==dismissKey;
   if(!show){ el.hidden=true; el.classList.remove('on'); return; }
   const jp=jpMonth(mk);
-  $('#syncBannerText').innerHTML = st.k==='error'
-    ? `<b>${jp}の同期でエラーが発生しています。</b>稼働最終日を過ぎています。「管理・設定」でサインイン状況をご確認のうえ、再同期してください。（${st.txt}）`
-    : `<b>${jp}の入力に、まだ他の端末へ送信されていないデータが ${pend} 件あります。</b>稼働最終日を過ぎています。印刷・集計の前に同期を確認してください。`;
+  let msg;
+  if(errTrouble){
+    msg = monthEndTrouble
+      ? `<b>${jp}の同期でエラーが発生しています。</b>稼働最終日を過ぎています。「管理・設定」で保存先・トークンをご確認のうえ、再同期してください。（${st.txt}）`
+      : `<b>同期でエラーが発生しています。</b>「管理・設定」で保存先・トークンをご確認のうえ、再同期してください。（${st.txt}）`;
+  } else if(monthEndTrouble){
+    msg = `<b>${jp}の入力に、まだ他の端末へ送信されていないデータが ${pend} 件あります。</b>稼働最終日を過ぎています。印刷・集計の前に同期を確認してください。`;
+  } else {
+    msg = `<b>この端末にたまっていて、まだ他の端末へ送信されていない入力が ${pend} 件あります。</b>電波の良い場所で、画面右上の同期表示を押してください。`;
+  }
+  $('#syncBannerText').innerHTML = msg;
   el.hidden=false; el.classList.add('on');
 }
 $('#syncBannerBtn').onclick=async()=>{ $('#syncBannerBtn').disabled=true; await Sync.run('banner'); $('#syncBannerBtn').disabled=false; render(); };
@@ -1132,7 +1183,10 @@ function loadDraft(){
   draft={ staffId:st, date:dt,
     start: d? (d.start||'') : '', end: d? (d.end||'') : '',
     note: d? (d.note||'') : '',
-    entries: es.length? es : [] , _existed: !!(d||es.length) };
+    entries: es.length? es : [] , _existed: !!(d||es.length),
+    /* 保存時、他の端末が入れた分と自分の変更を項目ごとに区別するための「読み込んだ時点」の記録 */
+    _origStart: d?(d.start||''):'', _origEnd: d?(d.end||''):'', _origNote: d?(d.note||''):'',
+    _origIds: new Set(es.map(e=>e.id)) };
 }
 function draftDirtyCheck(){ /* 明示保存方式 */ }
 
@@ -1255,11 +1309,14 @@ $('#batchToggle').onclick=()=>{
 };
 $('#batchClear').onclick=()=>{ batchDates.clear(); renderCalStrip(); updateBatchBar(); };
 $('#batchEnd').onclick=()=>{ batchMode=false; batchDates.clear(); $('#batchBar').hidden=true; $('#batchToggle').textContent='複数日にまとめて入力'; renderCalStrip(); };
-/* 下書き（draft）と同じ内容を、別の日付へ丸ごと書き込む（既存の内容は置き換える） */
+/* 下書き（draft）と同じ内容を、別の日付へ丸ごと書き込む（既存の内容は置き換える。
+   まとめて入力は確認ダイアログで上書きに同意した上での操作なので、start/end/noteの
+   3項目とも「今、意図して書き換えた」ものとして扱う） */
 function commitDraftToDate(staffId, dt, src){
   const dayId=staffId+'|'+dt;
   const any=(src.start||src.end||src.note||src.entries.some(e=>e.siteId&&num(e.hours)));
-  if(any) put('day', {id:dayId, staffId, date:dt, start:src.start||'', end:src.end||'', note:src.note||''});
+  const t=now();
+  if(any) put('day', {id:dayId, staffId, date:dt, start:src.start||'', end:src.end||'', note:src.note||'', _uf:{start:t,end:t,note:t}});
   else if(S.day[dayId] && !S.day[dayId]._x) del('day', dayId);
   entriesOf(staffId,dt).forEach(e=> del('entry', e.id));
   src.entries.forEach(e=>{ if(!e.siteId||!num(e.hours)) return;
@@ -1435,24 +1492,44 @@ function hasEdits(){
   const nw=draft.entries.filter(e=>e.siteId&&num(e.hours)).map(e=>e.siteId+':'+num(e.hours)).sort().join('|');
   return old!==nw;
 }
-/* 下書き（draft）の内容をS（永続データ）へ書き込む。画面や入力中のフォーカスは変更しない */
+/* 下書き（draft）の内容をS（永続データ）へ書き込む。画面や入力中のフォーカスは変更しない。
+   同じ日を他の端末が自分より先に直していた場合でも、その内容を消してしまわないよう、
+   ①始業・終業・備考は「自分が実際に触った項目だけ」を書き込み、触っていない項目は
+     読み込んだあとに他の端末から届いた最新の内容をそのまま残す。
+   ②現場明細（entries）は、下書きを開いた時点に存在した行だけを削除の対象にする。
+     開いたあとに他の端末が追加した行は、自分がまだ知らないだけなので消さない
+     （＝次にこの日を開き直すと両方の内容が見える）。 */
 function commitDraft(){
   if(!draft || !draft.staffId) return false;
   const st=draft.staffId, dt=draft.date;
   const bad=draft.entries.find(e=> !e.siteId && num(e.hours)>0);
   if(bad) return false;
   const dayId=st+'|'+dt;
-  const any = (draft.start||draft.end||draft.note||draft.entries.some(e=>e.siteId&&num(e.hours)));
-  if(any) put('day', {id:dayId, staffId:st, date:dt, start:draft.start||'', end:draft.end||'', note:draft.note||''});
+
+  const liveDay=getDay(st,dt);
+  const liveVal={start:liveDay?liveDay.start||'':'', end:liveDay?liveDay.end||'':'', note:liveDay?liveDay.note||'':''};
+  const liveUf=liveDay&&liveDay._uf||{};
+  const orig={start:draft._origStart||'', end:draft._origEnd||'', note:draft._origNote||''};
+  const mine={start:draft.start||'', end:draft.end||'', note:draft.note||''};
+  const tsNow=now();
+  const val={}, uf={};
+  ['start','end','note'].forEach(k=>{
+    if(mine[k]!==orig[k]){ val[k]=mine[k]; uf[k]=tsNow; }              // 自分がこの項目を変更した
+    else { val[k]=liveVal[k]; uf[k]=liveUf[k]!=null?liveUf[k]:(liveDay?liveDay._u:0)||0; } // 触っていない→最新を維持
+  });
+
+  const any = (val.start||val.end||val.note||draft.entries.some(e=>e.siteId&&num(e.hours)));
+  if(any) put('day', {id:dayId, staffId:st, date:dt, start:val.start, end:val.end, note:val.note, _uf:uf});
   else if(S.day[dayId] && !S.day[dayId]._x) del('day', dayId);
 
-  const oldE=entriesOf(st,dt); const keep={};
+  const origIds=draft._origIds||new Set();
+  const keep={};
   draft.entries.forEach(e=>{
     if(!e.siteId || !num(e.hours)) return;
     keep[e.id]=1;
     put('entry', {id:e.id, staffId:st, date:dt, siteId:e.siteId, hours:Math.round(num(e.hours)*100)/100});
   });
-  oldE.forEach(e=>{ if(!keep[e.id]) del('entry', e.id); });
+  entriesOf(st,dt).forEach(e=>{ if(origIds.has(e.id) && !keep[e.id]) del('entry', e.id); });
   persist(true);
   Sync.schedule(1500);
   return true;
@@ -1667,11 +1744,26 @@ let adminOpen={staff:false, site:false, holiday:false, config:false};
 function accH3(key, icon, label, sub){
   return `<h3 class="acc" data-acc="${key}">${icon} ${label} <span class="sub">${sub}</span><span class="chev">▾</span></h3>`;
 }
+/* アプリを開いているURL（GitHub Pages）から、データ用リポジトリ名の候補を作る。
+   例）https://tutuken0117.github.io/sagyounippou/ → tutuken0117/sagyounippou-data
+   ※ アプリを置く公開リポジトリと、データを置く非公開リポジトリは必ず別にする（Pagesの無料利用には
+   公開リポジトリが必要なため、同じリポジトリにデータを置くと社員名・勤務時間が誰でも見えてしまう） */
+function suggestDataRepo(){
+  try{
+    const h=location.hostname;
+    if(!/\.github\.io$/i.test(h)) return '';
+    const user=h.replace(/\.github\.io$/i,'');
+    const repo=(location.pathname||'').split('/').filter(Boolean)[0]||'';
+    if(!user||!repo) return '';
+    return user+'/'+repo+'-data';
+  }catch(e){ return ''; }
+}
 function renderAdmin(){
   const c=cfg(), st=Sync.status();
   const staff=staffList(true), sites=siteList(true);
   const shared=(c.ghRepo||'').trim();
   const mine=(S.meta.ghRepo||'').trim();
+  const suggested=suggestDataRepo();
   const box=$('#adminBox');
   box.innerHTML = `
   <div class="card"><h3>🔄 同期 <span class="sub">GitHubのリポジトリ1つを、全端末で共有します</span></h3><div class="body">
@@ -1704,6 +1796,13 @@ function renderAdmin(){
     </div>
     ${shared && shared!==mine? `<div class="banner warn" style="margin-top:12px">
       <b>全社で決めた保存先は「${esc(shared)}」です。</b><br>この端末には別の保存先が入っています。同じものに合わせてください。
+    </div>`:''}
+    ${(!mine && !shared && suggested)? `<div class="banner info" style="margin-top:12px">
+      今このアプリを開いているURLから判断すると、データ用に <code>${esc(suggested)}</code> という名前で
+      <b>非公開（Private）</b>のリポジトリを新しく作ると、迷わず始められます。
+      ※アプリを置いている公開リポジトリとは<b>別のリポジトリ</b>にしてください。同じリポジトリに保存すると、
+      Pagesの無料利用には公開設定が必要なため、社員名や勤務時間が誰でも見られる状態になってしまいます。<br>
+      <button class="btn sm" id="btnUseSuggestedRepo" type="button" style="margin-top:6px">この名前を入力欄に入れる</button>
     </div>`:''}
     <div class="hint" style="margin-top:10px">
       スマホ・タブレット・パソコンのどれでも、同じURLを開いてこの2つを入れれば同じ日報が見られます。
@@ -1905,6 +2004,11 @@ function bindAdmin(){
     setGhToken(''); Sync.emit(); renderAdmin(); toast('トークンを消しました');
   });
   $('#btnGhHelp').onclick=()=> dialog('はじめての設定', GITHUB_HELP_HTML, [{t:'閉じる', cls:'primary'}]);
+  $('#btnUseSuggestedRepo')&&($('#btnUseSuggestedRepo').onclick=()=>{
+    const v=suggestDataRepo(); if(!v) return;
+    $('#cfGhRepo').value=v; $('#cfGhRepo').focus();
+    toast('入力欄に入れました。GitHubでこの名前の非公開リポジトリを作成してから「接続を確認」を押してください');
+  });
   $('#btnSetupLink').onclick=()=>{
     grabSyncFields(); persist(true);
     if(!Sync.configured()){ toast('先に保存先とトークンを設定してください', true); return; }
