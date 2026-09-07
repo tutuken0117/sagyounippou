@@ -9,7 +9,6 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="作業日報">
-<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3/lib/msal-browser.min.js"></script>
 <style>
 :root{
   --navy:#12395c; --navy-d:#0c2740; --navy-l:#1d5182;
@@ -548,14 +547,13 @@ const IDB = (()=>{
 -------------------------------------------------- */
 const TYPES=['staff','site','holiday','day','entry','config'];
 const DEF_CONFIG={ id:'config', company:'', stdHours:7, nightFrom:'22:00', nightTo:'05:00',
-  restWd:[0], defStart:'08:00', defEnd:'17:00', folderLabel:'', jpHolidays:true,
+  restWd:[0], defStart:'08:00', defEnd:'17:00', ghRepo:'', jpHolidays:true,
   noteChips:['現場管理','書類作成','見積書作成','現場調査','打合せ','講習','安全教育','健康診断','有給休暇','休日'] };
 
 let S = null;  // state
 function blankState(){
   const s={ v:1, meta:{ pending:{}, lastSyncAt:0, autoSync:true, myStaff:'',
-    syncMode:'', folderChosen:false, folderName:'',
-    msClientId:'', msFolderLink:'', msDriveId:'', msFolderId:'', msFolderName:'', msAccount:null, msPeerVersions:{},
+    ghRepo:'', peerVer:{},
     holidaySeeded:false, staffCleanup1:false, siteArchiveSince:0 } };
   TYPES.forEach(t=> s[t]={});
   s.config['config']=Object.assign({},DEF_CONFIG,{_u:now(),_d:DEVICE});
@@ -778,225 +776,65 @@ function sitesUsed(staffId,mk){
 
 <script>
 /* =========================================================================
-   同期エンジン
-   - 共有の置き場所（PCのフォルダ／OneDrive）に、「端末ごとのスナップショット
-     （device-xxxx.json）」を1つずつ置く。
-   - 自分の端末は自分のファイルだけを上書きするので、他の端末と同時に
+   同期エンジン（GitHubのプライベートリポジトリ）
+   - 置き場所はGitHubのリポジトリ1つだけ。どの端末（PC・スマホ・タブレット）
+     からでも、同じURLを開いて同じ設定を入れれば同じ日報が見られる。
+   - 端末ごとのスナップショット（device-xxxx.json）を1つずつ置く。
+     自分の端末は自分のファイルだけを上書きするので、他の端末と同時に
      書き込んでも衝突しない。
    - 読み込み側は、変わったファイルだけを取得してLWW（あとから保存した
      ほうが残る）でマージする。
-   - オフライン中の変更は端末内に貯まり、あとでまとめて送られる。
-   置き場所は2通りから選べる：
-     folder   … この端末から見えるフォルダ（社内共有フォルダ、OneDriveや
-                 Dropboxの同期フォルダ、NASなど）。PCのChrome/Edge向け。
-     onedrive … OneDriveの共有フォルダにインターネット経由で直接読み書き。
-                 スマホ・タブレットでも使える。
+   - 電波の無い場所での入力は端末内に貯まり、オンライン復帰で自動送信。
+   - トークンは秘密なので、同期データにもバックアップにも含めず、
+     その端末のブラウザの中（localStorage）にだけ保存する。
    ========================================================================= */
-const GRAPH_SCOPES = ['Files.ReadWrite', 'offline_access'];
-const DEVFILE_RE = /^device-.+\.json$/i;
+const GH_API='https://api.github.com';
+const GH_DIR='data';
+const DEVFILE_RE=/^device-.+\.json$/i;
 
-const MsAuth = (()=>{
-  let inst=null, initPromise=null;
-  function client(){
-    const clientId=(S.meta.msClientId||'').trim();
-    if(!clientId || typeof msal==='undefined') return null;
-    if(inst && inst.__cid===clientId) return inst;
-    inst = new msal.PublicClientApplication({
-      auth:{ clientId, authority:'https://login.microsoftonline.com/common',
-        redirectUri: location.origin+location.pathname },
-      cache:{ cacheLocation:'localStorage', storeAuthStateInCookie:false }
-    });
-    inst.__cid = clientId;
-    initPromise = inst.initialize();
-    return inst;
-  }
-  async function ready(){ const c=client(); if(!c) return null; await initPromise; return c; }
-  async function boot(){
-    const c=await ready(); if(!c) return;
-    try{
-      const res=await c.handleRedirectPromise();
-      const acc = (res&&res.account) || c.getAllAccounts()[0];
-      if(acc){ c.setActiveAccount(acc); S.meta.msAccount={homeAccountId:acc.homeAccountId, username:acc.username}; persist(true); }
-      else if(S.meta.msAccount){ S.meta.msAccount=null; persist(true); }
-    }catch(e){ console.warn('サインイン状態の確認に失敗しました', e); }
-  }
-  async function signIn(){
-    const c=await ready(); if(!c) throw new Error('クライアントIDが未設定です');
-    await c.loginRedirect({scopes:GRAPH_SCOPES});
-  }
-  function signOut(){
-    const c=inst; S.meta.msAccount=null; persist(true);
-    if(c){ const a=c.getActiveAccount(); if(a) c.logoutRedirect({account:a}); }
-  }
-  async function token(){
-    const c=await ready(); if(!c) throw new Error('クライアントIDが未設定です');
-    const acc=c.getActiveAccount()||c.getAllAccounts()[0];
-    if(!acc) throw new Error('サインインしてください');
-    try{
-      const r=await c.acquireTokenSilent({scopes:GRAPH_SCOPES, account:acc});
-      return r.accessToken;
-    }catch(e){
-      await c.acquireTokenRedirect({scopes:GRAPH_SCOPES, account:acc});
-      throw new Error('サインインし直しています…');
-    }
-  }
-  return {ready, boot, signIn, signOut, token, get account(){ return S.meta.msAccount||null; }};
-})();
-
-/* ---------------- Microsoft Graph 呼び出し ---------------- */
-function b64urlOfShareLink(url){
-  const b64 = btoa(unescape(encodeURIComponent(url.trim())));
-  return 'u!'+b64.replace(/=+$/,'').replace(/\//g,'_').replace(/\+/g,'-');
+function ghToken(){ try{ return localStorage.getItem('nippo.ghToken')||''; }catch(e){ return ''; } }
+function setGhToken(t){
+  try{ if(t) localStorage.setItem('nippo.ghToken', String(t).trim()); else localStorage.removeItem('nippo.ghToken'); }catch(e){}
 }
-async function graphResolveShareFolder(tok, shareUrl){
-  const id=b64urlOfShareLink(shareUrl);
-  const res=await fetch(`https://graph.microsoft.com/v1.0/shares/${id}/driveItem?$select=id,name,folder,parentReference`,
-    {headers:{Authorization:'Bearer '+tok}});
-  if(!res.ok) throw new Error('共有リンクを開けませんでした（'+res.status+'）。リンクと権限をご確認ください。');
+function ghRepo(){
+  return (S.meta.ghRepo||'').trim()
+    .replace(/^https?:\/\/github\.com\//i,'').replace(/\.git$/,'').replace(/^\/+|\/+$/g,'');
+}
+function b64utf8(s){ return btoa(unescape(encodeURIComponent(s))); }
+function unb64utf8(s){ return decodeURIComponent(escape(atob(s))); }
+
+async function ghFetch(path, opt){
+  opt=opt||{};
+  const headers=Object.assign({
+    'Authorization':'Bearer '+ghToken(),
+    'Accept':'application/vnd.github+json',
+    'X-GitHub-Api-Version':'2022-11-28'
+  }, opt.headers||{});
+  return await fetch(GH_API+path, Object.assign({}, opt, {headers}));
+}
+function ghErrMsg(res){
+  if(res.status===401) return 'アクセストークンが正しくないか、期限が切れています';
+  if(res.status===404) return '保存先が見つかりません（リポジトリ名の間違い、またはトークンにこのリポジトリの権限がありません）';
+  if(res.status===403) return 'アクセスが拒否されました（トークンの権限、または回数制限をご確認ください）';
+  if(res.status===409 || res.status===422) return '他の端末と同時に書き込みが発生しました。もう一度お試しください';
+  return '通信に失敗しました（'+res.status+'）';
+}
+
+/* 設定が正しいかその場で確かめる（「接続を確認」ボタン用） */
+async function ghCheck(){
+  const repo=ghRepo();
+  if(!repo) return {ok:false, msg:'保存先リポジトリを入力してください（例：yamada/nippo-data）'};
+  if(!/^[\w.-]+\/[\w.-]+$/.test(repo)) return {ok:false, msg:'保存先は「GitHubのユーザー名／リポジトリ名」の形で入力してください（例：yamada/nippo-data）'};
+  if(!ghToken()) return {ok:false, msg:'アクセストークンを入力してください'};
+  let res;
+  try{ res=await ghFetch('/repos/'+repo); }
+  catch(e){ return {ok:false, msg:'インターネットに接続できませんでした'}; }
+  if(!res.ok) return {ok:false, msg:ghErrMsg(res)};
   const j=await res.json();
-  if(!j.folder) throw new Error('共有されているのはファイルです。フォルダを共有してください。');
-  return {driveId:j.parentReference.driveId, itemId:j.id, name:j.name};
+  if(j.permissions && j.permissions.push===false)
+    return {ok:false, msg:'このトークンでは書き込みができません（トークンの Contents を Read and write にしてください）'};
+  return {ok:true, msg:'「'+j.full_name+'」に接続できました'+(j.private?'（非公開リポジトリ）':''), warn: j.private? '' : 'このリポジトリは公開されています。社員名や勤務時間が誰でも見られる状態のため、GitHubの Settings から Private に変更することを強くおすすめします。'};
 }
-async function graphListChildren(tok, driveId, itemId){
-  let url=`https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/children?$select=id,name,eTag,lastModifiedDateTime&$top=200`;
-  let out=[];
-  while(url){
-    const res=await fetch(url,{headers:{Authorization:'Bearer '+tok}});
-    if(!res.ok) throw new Error('一覧の取得に失敗しました（'+res.status+'）');
-    const j=await res.json(); out=out.concat(j.value||[]); url=j['@odata.nextLink'];
-  }
-  return out;
-}
-async function graphGetContent(tok, driveId, itemId){
-  const res=await fetch(`https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/content`,
-    {headers:{Authorization:'Bearer '+tok}});
-  if(!res.ok) throw new Error('ファイルの取得に失敗しました（'+res.status+'）');
-  return await res.json();
-}
-async function graphPutContent(tok, driveId, folderId, filename, obj){
-  const res=await fetch(`https://graph.microsoft.com/v1.0/drives/${driveId}/items/${folderId}:/${encodeURIComponent(filename)}:/content`,
-    {method:'PUT', headers:{Authorization:'Bearer '+tok, 'Content-Type':'application/json'}, body:JSON.stringify(obj)});
-  if(!res.ok) throw new Error('送信に失敗しました（'+res.status+'）');
-  return await res.json();
-}
-
-/* =========================================================================
-   フォルダ（File System Access API）
-   選んだフォルダの「handle」はこの端末の中に保存され、次回以降も同じ
-   フォルダを使い続ける。フルパスはブラウザの仕様上ページ側から取得できない
-   ため、全社で共通の置き場所は「フォルダ名」を全端末で共有して案内する。
-   ========================================================================= */
-const FolderStore = (()=>{
-  const KEY='folderHandle';
-  let handle=null, loaded=false, perm='unknown';
-  async function get(){
-    if(loaded) return handle;
-    try{ handle = (await IDB.get(KEY)) || null; }catch(e){ handle=null; }
-    loaded=true; return handle;
-  }
-  function supported(){ return typeof window.showDirectoryPicker==='function'; }
-  function permState(){ return perm; }
-  async function refreshPermission(request){
-    const h=await get();
-    if(!h){ perm='none'; return perm; }
-    try{
-      const opts={mode:'readwrite'};
-      let p=await h.queryPermission(opts);
-      if(p!=='granted' && request) p=await h.requestPermission(opts);
-      perm=p;
-    }catch(e){ perm='none'; }
-    return perm;
-  }
-  async function pick(){
-    if(!supported()) throw new Error('このブラウザではフォルダを選べません（PCのChrome／Edgeでお使いください）');
-    const h=await window.showDirectoryPicker({id:'nippo-sync', mode:'readwrite', startIn:'documents'});
-    handle=h; loaded=true; perm='granted';
-    await IDB.set(KEY, h);
-    /* 記憶できたか確認する（IndexedDBが使えない端末では覚えられない） */
-    const back = await IDB.get(KEY);
-    if(!back || typeof back.queryPermission!=='function')
-      throw new Error('この端末では選んだフォルダを記憶できません（ブラウザのプライベートモードなどをご確認ください）');
-    S.meta.folderName=h.name; S.meta.folderChosen=true;
-    persist(true);
-    return h;
-  }
-  async function forget(){
-    handle=null; loaded=true; perm='none';
-    try{ await IDB.set(KEY, null); }catch(e){}
-    S.meta.folderChosen=false; S.meta.folderName='';
-    persist(true);
-  }
-  function name(){ return (handle&&handle.name) || S.meta.folderName || ''; }
-  return {get, supported, pick, forget, name, permState, refreshPermission};
-})();
-
-/* 全社で決めた同期先フォルダ名（config に入れて全端末へ共有する） */
-function sharedFolderLabel(){ return (cfg().folderLabel||'').trim(); }
-function setSharedFolderLabel(nm){
-  const c=cfg();
-  put('config', Object.assign({}, c, {folderLabel:nm||''}));
-}
-
-/* ---------------- 置き場所（バックエンド） ---------------- */
-const GraphBackend = {
-  key:'onedrive', label:'OneDrive', requiresNetwork:true,
-  configured(){ return !!(S.meta.msClientId && S.meta.msDriveId && S.meta.msFolderId); },
-  notReady(){
-    if(!S.meta.msClientId) return 'クライアントID未設定';
-    if(!(S.meta.msDriveId && S.meta.msFolderId)) return '共有フォルダ未設定';
-    if(!S.meta.msAccount) return 'サインインしてください';
-    return '';
-  },
-  async session(){
-    const tok=await MsAuth.token();
-    const driveId=S.meta.msDriveId, folderId=S.meta.msFolderId;
-    return {
-      async list(){
-        const cs=await graphListChildren(tok, driveId, folderId);
-        return cs.filter(c=>DEVFILE_RE.test(c.name)).map(c=>({name:c.name, tag:c.eTag, ref:c.id}));
-      },
-      async read(it){ return graphGetContent(tok, driveId, it.ref); },
-      async write(name, obj){ return graphPutContent(tok, driveId, folderId, name, obj); }
-    };
-  }
-};
-
-const FolderBackend = {
-  key:'folder', label:'PCのフォルダ', requiresNetwork:false,
-  configured(){ return !!S.meta.folderChosen; },
-  notReady(){
-    if(!FolderStore.supported()) return 'この端末では使えません';
-    if(!S.meta.folderChosen) return 'フォルダ未設定';
-    if(FolderStore.permState()!=='granted') return 'フォルダの許可が必要';
-    return '';
-  },
-  async session(){
-    const h=await FolderStore.get();
-    if(!h) throw new Error('同期先のフォルダが選ばれていません');
-    if(await FolderStore.refreshPermission(false)!=='granted') throw new Error('フォルダへのアクセスが許可されていません');
-    return {
-      async list(){
-        const out=[];
-        for await (const [name, ent] of h.entries()){
-          if(ent.kind!=='file' || !DEVFILE_RE.test(name)) continue;
-          const f=await ent.getFile();
-          out.push({name, tag:f.lastModified+':'+f.size, ref:ent});
-        }
-        return out;
-      },
-      async read(it){
-        const f=await it.ref.getFile();
-        return JSON.parse(await f.text());
-      },
-      async write(name, obj){
-        const fh=await h.getFileHandle(name, {create:true});
-        const w=await fh.createWritable();
-        await w.write(new Blob([JSON.stringify(obj)], {type:'application/json'}));
-        await w.close();
-      }
-    };
-  }
-};
 
 /* この端末が持つ全レコードのスナップショット（削除済みのタブストーンも含む） */
 function exportSnapshot(){
@@ -1014,31 +852,21 @@ const Sync = (()=>{
   let busy=false, timer=null, lastErr='';
   let listeners=[];
 
-  function mode(){
-    if(S.meta.syncMode) return S.meta.syncMode;
-    /* 旧バージョンからの引き継ぎ：OneDriveを設定済みならその方式のまま */
-    if(S.meta.msClientId) return 'onedrive';
+  function configured(){ return !!(ghRepo() && ghToken()); }
+  function notReady(){
+    if(!ghRepo()) return '保存先が未設定';
+    if(!ghToken()) return 'トークン未設定';
     return '';
-  }
-  function backend(){
-    const m=mode();
-    if(m==='folder') return FolderBackend;
-    if(m==='onedrive') return GraphBackend;
-    return null;
   }
   function pendingCount(){ return Object.keys(S.meta.pending||{}).length; }
   function onChange(fn){ listeners.push(fn); }
   function emit(){ listeners.forEach(f=>{ try{f();}catch(e){} }); }
-  function configured(){ const b=backend(); return !!(b && b.configured()); }
 
   function status(){
-    const b=backend();
-    if(!b) return {k:'local', txt:'この端末に保存', cls:'off'};
-    const issue=b.notReady();
+    const issue=notReady();
     if(issue) return {k:'local', txt:issue, cls:'off'};
     if(busy) return {k:'busy', txt:'同期中…', cls:'busy'};
-    if(b.requiresNetwork && !navigator.onLine)
-      return {k:'offline', txt:'オフライン'+(pendingCount()?'（未送信 '+pendingCount()+'）':''), cls:'off'};
+    if(!navigator.onLine) return {k:'offline', txt:'オフライン'+(pendingCount()?'（未送信 '+pendingCount()+'）':''), cls:'off'};
     if(lastErr) return {k:'error', txt:'同期エラー'+(pendingCount()?'（未送信 '+pendingCount()+'）':''), cls:'err'};
     if(pendingCount()) return {k:'pending', txt:'未送信 '+pendingCount()+' 件', cls:'off'};
     const t=S.meta.lastSyncAt? new Date(S.meta.lastSyncAt):null;
@@ -1046,33 +874,71 @@ const Sync = (()=>{
   }
   function lastError(){ return lastErr; }
 
+  /* リポジトリの中の device-*.json を扱う */
+  async function session(){
+    const repo=ghRepo();
+    let cache=null;
+    async function listing(){
+      if(cache) return cache;
+      const res=await ghFetch('/repos/'+repo+'/contents/'+GH_DIR);
+      if(res.status===404){ cache=[]; return cache; }        // まだ1件も置かれていない
+      if(!res.ok) throw new Error(ghErrMsg(res));
+      const j=await res.json();
+      cache=(Array.isArray(j)?j:[])
+        .filter(f=> f.type==='file' && DEVFILE_RE.test(f.name))
+        .map(f=> ({name:f.name, tag:f.sha, ref:f.sha}));
+      return cache;
+    }
+    return {
+      list: listing,
+      async read(it){
+        const res=await ghFetch('/repos/'+repo+'/git/blobs/'+it.ref, {headers:{'Accept':'application/vnd.github.raw'}});
+        if(!res.ok) throw new Error(ghErrMsg(res));
+        return JSON.parse(await res.text());
+      },
+      async write(name, obj){
+        const path='/repos/'+repo+'/contents/'+GH_DIR+'/'+name;
+        const body={message:'日報データ更新 '+name, content:b64utf8(JSON.stringify(obj))};
+        const cur=(await listing()).find(f=>f.name===name);
+        if(cur) body.sha=cur.ref;
+        let res=await ghFetch(path, {method:'PUT', body:JSON.stringify(body)});
+        if(res.status===409 || res.status===422){
+          cache=null;                                        // 競合したら一覧を取り直して1回だけやり直す
+          const again=(await listing()).find(f=>f.name===name);
+          if(again) body.sha=again.ref; else delete body.sha;
+          res=await ghFetch(path, {method:'PUT', body:JSON.stringify(body)});
+        }
+        if(!res.ok) throw new Error(ghErrMsg(res));
+        cache=null;
+        return await res.json();
+      }
+    };
+  }
+
   async function run(reason){
-    if(busy) return {ok:false,skip:true};
-    const b=backend();
-    if(!b || !b.configured()){ emit(); return {ok:false,skip:true}; }
-    const issue=b.notReady();
-    if(issue){ emit(); return {ok:false, skip:true, issue}; }
-    if(b.requiresNetwork && !navigator.onLine){ emit(); return {ok:false, offline:true}; }
+    if(busy) return {ok:false, skip:true};
+    if(notReady()){ emit(); return {ok:false, skip:true}; }
+    if(!navigator.onLine){ emit(); return {ok:false, offline:true}; }
     busy=true; emit();
-    const pendingKeys = Object.keys(S.meta.pending||{});
+    const pendingKeys=Object.keys(S.meta.pending||{});
     try{
-      const s = await b.session();
-      const myFile = 'device-'+DEVICE+'.json';
+      const s=await session();
+      const myFile='device-'+DEVICE+'.json';
 
       if(pendingKeys.length){
         await s.write(myFile, exportSnapshot());
         pendingKeys.forEach(k=> delete S.meta.pending[k]);
       }
 
-      const files = await s.list();
-      S.meta.msPeerVersions = S.meta.msPeerVersions||{};
+      const files=await s.list();
+      S.meta.peerVer = S.meta.peerVer||{};
       let changed=0, fetched=0;
       for(const it of files){
         if(it.name===myFile) continue;
-        if(S.meta.msPeerVersions[it.name]===it.tag) continue;
-        const data = await s.read(it);
+        if(S.meta.peerVer[it.name]===it.tag) continue;
+        const data=await s.read(it);
         changed += importSnapshot(data);
-        S.meta.msPeerVersions[it.name]=it.tag;
+        S.meta.peerVer[it.name]=it.tag;
         fetched++;
       }
 
@@ -1080,7 +946,7 @@ const Sync = (()=>{
       persist(true); busy=false; emit();
       return {ok:true, sent:pendingKeys.length, recv:fetched, changed};
     }catch(e){
-      lastErr = (e && e.message) || String(e);
+      lastErr=(e && e.message) || String(e);
       busy=false; persist(); emit();
       return {ok:false, error:lastErr};
     }
@@ -1094,8 +960,35 @@ const Sync = (()=>{
     setInterval(()=>{ if(S.meta.autoSync!==false) run('interval'); }, 60000);
     schedule(1200);
   }
-  return {run, schedule, start, status, pendingCount, onChange, lastError, configured, mode, backend, emit};
+  return {run, schedule, start, status, pendingCount, onChange, lastError, configured, notReady, emit};
 })();
+
+/* =========================================================================
+   別の端末へ設定を引き継ぐリンク
+   スマホで長いトークンを打たなくて済むように、保存先とトークンを
+   URLの「#」以降に入れたリンクを作る。「#」以降はサーバーへ送られない
+   ので、GitHub Pages側にトークンが渡ることはない。
+   ========================================================================= */
+function makeSetupLink(){
+  const payload={r:ghRepo(), t:ghToken()};
+  const code=b64utf8(JSON.stringify(payload)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  return location.origin+location.pathname+'#setup='+code;
+}
+/* リンクで開かれたときに設定を取り込む（起動時に1回だけ） */
+function consumeSetupLink(){
+  const m=(location.hash||'').match(/^#setup=([A-Za-z0-9\-_]+)$/);
+  if(!m) return false;
+  let applied=false;
+  try{
+    const json=unb64utf8(m[1].replace(/-/g,'+').replace(/_/g,'/'));
+    const p=JSON.parse(json);
+    if(p && p.r && p.t){ S.meta.ghRepo=String(p.r); setGhToken(String(p.t)); persist(true); applied=true; }
+  }catch(e){}
+  /* 履歴やブックマークにトークンが残らないよう、すぐURLから消す */
+  try{ history.replaceState(null,'', location.origin+location.pathname+location.search); }
+  catch(e){ location.hash=''; }
+  return applied;
+}
 
 /* ---------------- 画面ヘルパ ---------------- */
 let toastTimer=null;
@@ -1181,11 +1074,14 @@ function renderSyncChip(){
 Sync.onChange(renderSyncChip);
 Sync.onChange(updateSyncBanner);
 $('#syncChip').onclick=async()=>{
-  /* フォルダ方式で許可が切れている場合は、この操作（クリック）を使って許可を求める */
-  if(Sync.mode()==='folder' && S.meta.folderChosen && FolderStore.permState()!=='granted'){
-    const p=await FolderStore.refreshPermission(true);
-    Sync.emit();
-    if(p==='granted'){ toast('フォルダに接続しました'); const r=await Sync.run('manual'); if(r.ok) render(); return; }
+  /* 設定済みならその場で同期、未設定なら設定画面へ */
+  if(Sync.configured()){
+    toast('同期しています…');
+    const r=await Sync.run('manual');
+    if(r.ok){ toast(`同期しました（送信 ${r.sent} 件／受信 ${r.recv} 件）`); render(); return; }
+    toast('同期できませんでした：'+(r.error||'オフライン'), true);
+    if(r.error) openSyncPanel();
+    return;
   }
   openSyncPanel();
 };
@@ -1774,85 +1670,49 @@ function accH3(key, icon, label, sub){
 function renderAdmin(){
   const c=cfg(), st=Sync.status();
   const staff=staffList(true), sites=siteList(true);
-  const mode=Sync.mode();
-  const shared=sharedFolderLabel();
-  const sameFolder = !!shared && FolderStore.name()===shared;
+  const shared=(c.ghRepo||'').trim();
+  const mine=(S.meta.ghRepo||'').trim();
   const box=$('#adminBox');
   box.innerHTML = `
-  <div class="card"><h3>🔄 同期 <span class="sub">複数の端末で同じ置き場所を共有します</span></h3><div class="body">
+  <div class="card"><h3>🔄 同期 <span class="sub">GitHubのリポジトリ1つを、全端末で共有します</span></h3><div class="body">
     <div class="banner ${st.k==='ok'?'info':st.k==='error'?'bad':'warn'}" style="margin-bottom:12px">
       <b>状態：${esc(st.txt)}</b>
-      ${mode==='folder'&&FolderStore.name()? '<br>この端末の同期先フォルダ：'+esc(FolderStore.name()) : ''}
-      ${mode==='onedrive'&&S.meta.msAccount? '<br>サインイン中：'+esc(S.meta.msAccount.username||'') : ''}
-      ${mode==='onedrive'&&S.meta.msFolderName? '<br>共有フォルダ：'+esc(S.meta.msFolderName) : ''}
+      ${mine? '<br>保存先：'+esc(mine) : ''}
       ${Sync.lastError()? '<br>直近のエラー：'+esc(Sync.lastError()) : ''}
       ${S.meta.lastSyncAt? '<br>最終同期：'+new Date(S.meta.lastSyncAt).toLocaleString('ja-JP') : ''}
     </div>
 
-    <div class="fld" style="margin-bottom:12px"><label>同期のしかた</label>
-      <div class="chips" id="syncMode">
-        <button class="chip" data-m="folder" style="${mode==='folder'?'background:#12395c;color:#fff;border-color:#12395c':''}">📁 PCのフォルダ</button>
-        <button class="chip" data-m="onedrive" style="${mode==='onedrive'?'background:#12395c;color:#fff;border-color:#12395c':''}">☁️ OneDrive</button>
-        <button class="chip" data-m="" style="${!mode?'background:#12395c;color:#fff;border-color:#12395c':''}">この端末だけ</button>
-      </div>
-    </div>
-
-    ${mode==='folder'? `
     <div class="row">
-      <div class="fld grow" style="max-width:360px"><label>この端末が使うフォルダ</label>
-        <input type="text" value="${esc(FolderStore.name()||'（未選択）')}" readonly style="background:#f7f9fc"></div>
-      <button class="btn ${S.meta.folderChosen?'':'teal'}" id="btnPickFolder">${S.meta.folderChosen?'フォルダを選び直す':'フォルダを選ぶ'}</button>
-      ${S.meta.folderChosen && FolderStore.permState()!=='granted'? `<button class="btn primary" id="btnFolderPerm">フォルダへのアクセスを許可</button>`:''}
-      <div class="fld" style="min-width:170px"><label>この端末の既定の作業者</label>
-        <select id="cfMyStaff"><option value="">（指定しない）</option>${staffList().map(x=>`<option value="${x.id}"${S.meta.myStaff===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}</select></div>
-    </div>
-    ${shared? `<div class="banner ${sameFolder?'info':'warn'}" style="margin-top:12px">
-      <b>全社で決めた同期先フォルダ：${esc(shared)}</b><br>
-      ${sameFolder
-        ? 'この端末は同じ名前のフォルダを使っています。'
-        : 'この端末では <b>'+esc(FolderStore.name()||'未選択')+'</b> が選ばれています。全員が同じフォルダを使うよう、「フォルダを選び直す」で '+esc(shared)+' を選んでください。'}
-      <br><button class="btn sm" id="btnSetShared" style="margin-top:8px">この端末のフォルダを全社の同期先にする</button>
-    </div>`
-    : `<div class="hint" style="margin-top:10px">まだ全社の同期先が決まっていません。フォルダを選んだあと「この端末のフォルダを全社の同期先にする」を押すと、他の端末にもその名前が案内されます。
-        <br><button class="btn sm" id="btnSetShared" style="margin-top:8px" ${S.meta.folderChosen?'':'disabled'}>この端末のフォルダを全社の同期先にする</button></div>`}
-    <div class="hint" style="margin-top:10px">
-      社内の共有フォルダ（ファイルサーバー・NAS）や、OneDrive／Dropboxがパソコン上に作る同期フォルダを選んでください。
-      そのフォルダの中に、端末ごとの小さなデータファイル（device-〇〇.json）が置かれます。Excelのようなコピーファイルは発生しません。
-      ${FolderStore.supported()? '' : '<br><b style="color:#c02626">この端末（ブラウザ）ではフォルダ方式が使えません。</b>iPhone・iPad・Android・Firefox では、OneDrive方式をお使いください。'}
-    </div>
-    ` : mode==='onedrive'? `
-    <div class="row">
-      <div class="fld grow" style="max-width:420px"><label>Azureアプリの クライアントID <span class="muted">（最初に1回だけ）</span></label>
-        <input type="text" id="cfClientId" value="${esc(S.meta.msClientId||'')}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></div>
-      <div class="fld grow"><label>OneDriveの共有フォルダのリンク</label>
-        <input type="url" id="cfFolderLink" value="${esc(S.meta.msFolderLink||'')}" placeholder="https://1drv.ms/f/……"></div>
+      <div class="fld grow" style="max-width:320px"><label>保存先リポジトリ <span class="muted">（ユーザー名/リポジトリ名）</span></label>
+        <input type="text" id="cfGhRepo" value="${esc(mine)}" placeholder="例）yamada/nippo-data" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+      <div class="fld grow" style="max-width:320px"><label>アクセストークン <span class="muted">（この端末にだけ保存されます）</span></label>
+        <input type="password" id="cfGhToken" value="${ghToken()? '••••••••••••••••':''}" placeholder="github_pat_… で始まる文字列" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
       <div class="fld" style="min-width:170px"><label>この端末の既定の作業者</label>
         <select id="cfMyStaff"><option value="">（指定しない）</option>${staffList().map(x=>`<option value="${x.id}"${S.meta.myStaff===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}</select></div>
     </div>
     <div class="row" style="margin-top:12px">
-      ${S.meta.msAccount
-        ? `<button class="btn" id="btnMsSignOut">サインアウト</button>`
-        : `<button class="btn primary" id="btnMsSignIn">Microsoftでサインイン</button>`}
-      <button class="btn" id="btnSaveSync">設定を保存してフォルダに接続</button>
-      <span class="spacer"></span>
-      <button class="btn ghost" id="btnOdHelp">導入手順（Azure登録・フォルダ共有）</button>
-    </div>
-    ` : `
-    <div class="row">
-      <div class="fld" style="min-width:170px"><label>この端末の既定の作業者</label>
-        <select id="cfMyStaff"><option value="">（指定しない）</option>${staffList().map(x=>`<option value="${x.id}"${S.meta.myStaff===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}</select></div>
-    </div>
-    <div class="hint" style="margin-top:10px">この端末の中だけにデータを保存します。他の端末とは共有されません。</div>
-    `}
-
-    <div class="row" style="margin-top:12px">
-      <button class="btn primary" id="btnSyncNow" ${mode?'':'disabled'}>今すぐ同期</button>
+      <button class="btn primary" id="btnGhCheck">接続を確認</button>
+      <button class="btn" id="btnSyncNow">今すぐ同期</button>
       <label class="hint" style="display:flex;align-items:center;gap:6px;margin-left:6px">
         <input type="checkbox" id="cfAuto" ${S.meta.autoSync!==false?'checked':''} style="width:auto;min-height:0">自動同期する（1分ごと・起動時・復帰時）</label>
       <span class="spacer"></span>
+      ${ghToken()? '<button class="btn danger" id="btnGhClear">トークンを消す</button>':''}
     </div>
-    <div class="hint" style="margin-top:8px">端末ID：<code>${DEVICE}</code>　未送信 ${Sync.pendingCount()} 件</div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn teal" id="btnSetupLink" ${Sync.configured()?'':'disabled'}>別の端末に設定を送る</button>
+      <button class="btn ghost" id="btnGhHelp">はじめての設定（保存先とトークンの作り方）</button>
+    </div>
+    ${shared && shared!==mine? `<div class="banner warn" style="margin-top:12px">
+      <b>全社で決めた保存先は「${esc(shared)}」です。</b><br>この端末には別の保存先が入っています。同じものに合わせてください。
+    </div>`:''}
+    <div class="hint" style="margin-top:10px">
+      スマホ・タブレット・パソコンのどれでも、同じURLを開いてこの2つを入れれば同じ日報が見られます。
+      スマホに長いトークンを打ち込むのが大変な場合は、設定済みの端末で「別の端末に設定を送る」を使ってください。<br>
+      電波の無い場所での入力はこの端末に貯まり、電波が戻ると自動で送信されます。
+      端末ID：<code>${DEVICE}</code>　未送信 ${Sync.pendingCount()} 件
+    </div>
   </div></div>
+
 
   <div class="card ${adminOpen.staff?'open':''}">${accH3('staff','👷','社員', `在籍 ${staff.filter(s=>s.active!==false).length}名／総 ${staff.length}名`)}<div class="body" ${adminOpen.staff?'':'hidden'}>
     <div class="row" style="margin-bottom:10px">
@@ -2014,90 +1874,70 @@ function bindAdmin(){
     toast('設定を保存しました'); Sync.schedule(); render();
   };
   function grabSyncFields(){
-    const cid=$('#cfClientId'), link=$('#cfFolderLink'), auto=$('#cfAuto'), my=$('#cfMyStaff');
-    if(cid) S.meta.msClientId=cid.value.trim();
-    if(link) S.meta.msFolderLink=link.value.trim();
+    const auto=$('#cfAuto'), my=$('#cfMyStaff'), gr=$('#cfGhRepo'), gt=$('#cfGhToken');
+    if(gr) S.meta.ghRepo=gr.value.trim();
+    if(gt && gt.value && gt.value.indexOf('\u2022')<0) setGhToken(gt.value);   // 伏せ字のままなら触らない
     if(auto) S.meta.autoSync=auto.checked;
     if(my) S.meta.myStaff=my.value;
     if(S.meta.myStaff){ UI.staffId=S.meta.myStaff; draft=null; }
   }
 
-  /* ---- 同期方式の切り替え ---- */
-  $('#syncMode').addEventListener('click', e=>{
-    const b=e.target.closest('.chip[data-m]'); if(!b) return;
-    const m=b.dataset.m;
-    if(m==='folder' && !FolderStore.supported()){
-      dialog('この端末では使えません',
-        '<p>フォルダを直接読み書きする方式は、パソコンの Chrome または Edge でのみ使えます。<br>' +
-        'iPhone・iPad・Android・Firefox では、OneDrive方式をお選びください。</p>');
-      return;
-    }
-    grabSyncFields();
-    S.meta.syncMode=m; persist(true); Sync.emit(); renderAdmin();
-  });
-  $('#btnPickFolder')&&($('#btnPickFolder').onclick=async()=>{
-    try{
-      grabSyncFields();
-      await FolderStore.pick();
-      await FolderStore.refreshPermission(false);
-      S.meta.syncMode='folder'; persist(true);
-      toast('「'+FolderStore.name()+'」を同期先にしました');
+  $('#btnGhCheck').onclick=async()=>{
+    grabSyncFields(); persist(true);
+    toast('確認しています…');
+    let r;
+    try{ r=await ghCheck(); }catch(e){ r={ok:false, msg:'通信できませんでした：'+(e.message||e)}; }
+    if(r.ok){
+      /* 最初に設定した端末の保存先を、全社共通として他の端末にも知らせる */
+      if(cfg().ghRepo!==S.meta.ghRepo) put('config', Object.assign({}, cfg(), {ghRepo:S.meta.ghRepo}));
+      if(r.warn) dialog('接続できました', '<p>'+esc(r.msg)+'</p><p style="color:#c02626">'+esc(r.warn)+'</p>', [{t:'閉じる', cls:'primary'}]);
+      else toast(r.msg);
       renderAdmin(); Sync.schedule(300);
-    }catch(e){
-      if(e && (e.name==='AbortError')) return;      // ユーザーがキャンセルしただけ
-      toast('フォルダを設定できませんでした：'+(e.message||e), true);
+    }else{
+      dialog('接続できませんでした',
+        '<p>'+esc(r.msg)+'</p><p class="hint">「はじめての設定」ボタンから、保存先とトークンの作り方を確認できます。</p>',
+        [{t:'閉じる', cls:'primary'}]);
+      renderAdmin();
     }
+  };
+  $('#btnGhClear')&&($('#btnGhClear').onclick=()=>{
+    if(!confirm('この端末に保存されているアクセストークンを消します。よろしいですか？')) return;
+    setGhToken(''); Sync.emit(); renderAdmin(); toast('トークンを消しました');
   });
-  $('#btnFolderPerm')&&($('#btnFolderPerm').onclick=async()=>{
-    const p=await FolderStore.refreshPermission(true);
-    Sync.emit();
-    if(p==='granted'){ toast('フォルダに接続しました'); renderAdmin(); Sync.schedule(300); }
-    else toast('許可されませんでした', true);
-  });
-  $('#btnSetShared')&&($('#btnSetShared').onclick=()=>{
-    const nm=FolderStore.name();
-    if(!nm){ toast('先にフォルダを選んでください', true); return; }
-    setSharedFolderLabel(nm);
-    toast('全社の同期先を「'+nm+'」にしました');
-    renderAdmin(); Sync.schedule(300);
-  });
-  $('#btnMsSignIn')&&($('#btnMsSignIn').onclick=async()=>{
+  $('#btnGhHelp').onclick=()=> dialog('はじめての設定', GITHUB_HELP_HTML, [{t:'閉じる', cls:'primary'}]);
+  $('#btnSetupLink').onclick=()=>{
     grabSyncFields(); persist(true);
-    if(!S.meta.msClientId){ toast('先にクライアントIDを入力してください', true); return; }
-    try{ await MsAuth.signIn(); }catch(e){ toast('サインインできませんでした：'+e.message, true); }
-  });
-  $('#btnMsSignOut')&&($('#btnMsSignOut').onclick=()=>{ MsAuth.signOut(); toast('サインアウトしました'); renderAdmin(); });
-  $('#btnSaveSync')&&($('#btnSaveSync').onclick=async()=>{
-    grabSyncFields(); persist(true);
-    if(!S.meta.msClientId){ toast('クライアントIDを入力してください', true); renderAdmin(); return; }
-    if(!S.meta.msAccount){ toast('先にMicrosoftでサインインしてください', true); renderAdmin(); return; }
-    if(!S.meta.msFolderLink){ toast('OneDriveの共有フォルダのリンクを入力してください', true); renderAdmin(); return; }
-    toast('フォルダに接続しています…');
-    try{
-      const tok=await MsAuth.token();
-      const f=await graphResolveShareFolder(tok, S.meta.msFolderLink);
-      S.meta.msDriveId=f.driveId; S.meta.msFolderId=f.itemId; S.meta.msFolderName=f.name;
-      persist(true); toast('「'+f.name+'」に接続しました'); renderAdmin(); Sync.schedule(300);
-    }catch(e){ toast('接続できませんでした：'+e.message, true); }
-  });
+    if(!Sync.configured()){ toast('先に保存先とトークンを設定してください', true); return; }
+    const url=makeSetupLink();
+    dialog('別の端末に設定を送る', `
+      <p class="hint" style="margin:0 0 10px">このリンクをスマホやタブレットで開くと、保存先とトークンが自動で入り、すぐ使えるようになります。
+      LINEやメールで自分宛てに送ってから、その端末で開いてください。</p>
+      <textarea id="setupUrl" readonly style="min-height:90px;font-size:12px">${esc(url)}</textarea>
+      <p class="hint" style="margin:10px 0 0">
+      ※ このリンクにはトークン（合鍵）が含まれます。送ったメッセージは、設定が終わったら削除してください。<br>
+      ※ リンクの「#」より後ろはインターネット上のサーバーには送られない仕組みのため、GitHub Pages側にトークンが渡ることはありません。<br>
+      ※ 開いた端末では、設定を読み込んだ直後にURLからトークン部分が自動的に消えます。</p>`,
+      [{t:'閉じる'},
+       {t:'コピー', cls:'primary', fn:()=>{
+         const ta=$('#setupUrl'); ta.select(); ta.setSelectionRange(0, 99999);
+         let ok=false;
+         try{ ok=document.execCommand('copy'); }catch(e){}
+         if(navigator.clipboard){ navigator.clipboard.writeText(ta.value).then(()=>{}, ()=>{}); ok=true; }
+         toast(ok? 'リンクをコピーしました':'コピーできませんでした。長押しで選択してコピーしてください', !ok);
+         return false;
+       }}]);
+  };
   $('#btnSyncNow').onclick=async()=>{
     grabSyncFields(); persist(true);
-    const b=Sync.backend();
-    if(!b){ toast('先に同期のしかたを選んでください', true); return; }
-    const issue=b.notReady();
-    if(issue){
-      if(Sync.mode()==='folder' && S.meta.folderChosen && FolderStore.permState()!=='granted'){
-        const p=await FolderStore.refreshPermission(true);
-        if(p!=='granted'){ toast('フォルダへのアクセスが許可されていません', true); renderAdmin(); return; }
-      } else { toast(issue, true); renderAdmin(); return; }
-    }
+    const issue=Sync.notReady();
+    if(issue){ toast(issue+'です。保存先とトークンを入力して「接続を確認」を押してください', true); return; }
     toast('同期しています…');
     const r=await Sync.run('manual');
     if(r.ok) toast(`同期しました（送信 ${r.sent} 件／受信 ${r.recv} 件）`);
     else toast('同期できませんでした：'+(r.error||'オフライン'), true);
     render();
   };
-  $('#btnOdHelp')&&($('#btnOdHelp').onclick=()=> dialog('OneDrive同期の導入手順', ONEDRIVE_HELP_HTML, [{t:'閉じる',cls:'primary'}]));
+
 
   $('#expJson').onclick=()=>{
     downloadBlob(JSON.stringify(S,null,1),'application/json',`作業日報バックアップ_${ymd(new Date())}.json`);
@@ -2116,9 +1956,7 @@ function bindAdmin(){
   $('#wipe').onclick=()=>{
     if(!confirm('この端末のデータをすべて消去します。\n同期先に送信済みのデータは、次回同期で再取得されます。\n本当によろしいですか？')) return;
     if(!confirm('最終確認：初期化を実行します。')) return;
-    const keep={msClientId:S.meta.msClientId, msFolderLink:S.meta.msFolderLink, msDriveId:S.meta.msDriveId,
-      msFolderId:S.meta.msFolderId, msFolderName:S.meta.msFolderName, msAccount:S.meta.msAccount,
-      syncMode:S.meta.syncMode, folderChosen:S.meta.folderChosen, folderName:S.meta.folderName};
+    const keep={ghRepo:S.meta.ghRepo};   // 同期の設定は残す（トークンは端末内に別途保存）
     S=blankState(); Object.assign(S.meta, keep);
     persist(true); location.reload();
   };
@@ -2369,47 +2207,43 @@ window.addEventListener('resize', ()=>{ if(UI.view==='print') fitPreview(); });
 
 <script>
 /* =========================================================================
-   OneDrive同期の導入手順（ヘルプ）
+   GitHub方式の導入手順（ヘルプ）
    ========================================================================= */
-const ONEDRIVE_HELP_HTML = `
-<div style="margin:0 0 12px;padding:10px;background:#eef5fc;border-radius:8px;font-size:12.5px;line-height:1.7">
-<b>先に「📁 PCのフォルダ」方式をご検討ください。</b> パソコン（Chrome／Edge）で使う場合は、
-社内の共有フォルダやOneDriveの同期フォルダを選ぶだけで済み、下記のAzure登録は不要です。
-スマホ・タブレットからも入力する場合のみ、この OneDrive 方式が必要になります。</div>
-<p style="margin:0 0 10px;font-size:13px;line-height:1.8">最初に１回だけ、ご担当者様に行っていただく作業です。以降は各端末で
-サインインするだけで自動的に同期します。合言葉は使いません — サインインとフォルダへのアクセス権が、
-そのまま「誰が読み書きできるか」の管理になります。</p>
-<h4 style="margin:14px 0 6px;font-size:13.5px">① Azureにアプリを登録する（無料・約10分）</h4>
+const GITHUB_HELP_HTML = `
+<p style="margin:0 0 12px;font-size:13px;line-height:1.8">最初に１回だけ、ご担当者様に行っていただく作業です（約5分）。
+Azureのようなアプリ登録やリダイレクトURIの設定は<b>ありません</b>。用意するのは「入れ物」と「合鍵」の2つだけです。</p>
+
+<h4 style="margin:14px 0 6px;font-size:13.5px">① データを入れるリポジトリ（入れ物）を作る</h4>
 <ol style="line-height:1.9;padding-left:1.2em;margin:0">
-<li><a href="https://portal.azure.com" target="_blank" rel="noopener">portal.azure.com</a> を開き、お使いのMicrosoftアカウントでサインイン</li>
-<li>「Microsoft Entra ID」→「アプリの登録」→「新規登録」</li>
-<li>名前は「作業日報システム」など。サポートされているアカウントの種類は
-<b>「任意の組織のディレクトリ内のアカウントと個人のMicrosoftアカウント」</b>を選択</li>
-<li>「リダイレクトURI」で種類を<b>「シングルページアプリケーション(SPA)」</b>に、値にこのアプリを置いたURL
-（例：<code>https://〇〇〇.netlify.app/index.html</code>）を入力して登録</li>
-<li>登録後の画面に表示される<b>「アプリケーション(クライアント)ID」</b>をコピー</li>
-<li>左メニュー「APIのアクセス許可」→「アクセス許可の追加」→「Microsoft Graph」→「委任されたアクセス許可」で
-<b>Files.ReadWrite</b> と <b>offline_access</b> を追加（管理者の同意は不要です）</li>
+<li><a href="https://github.com/new" target="_blank" rel="noopener">github.com/new</a> を開く</li>
+<li>Repository name に <code>nippo-data</code> などと入力</li>
+<li><b>Private（非公開）</b> を選ぶ　※ここは必ず Private にしてください</li>
+<li>「Create repository」を押す</li>
 </ol>
-<h4 style="margin:14px 0 6px;font-size:13.5px">② OneDriveにフォルダを作って共有する</h4>
+
+<h4 style="margin:14px 0 6px;font-size:13.5px">② アクセストークン（合鍵）を作る</h4>
 <ol style="line-height:1.9;padding-left:1.2em;margin:0">
-<li>OneDrive上に新しいフォルダを作成（例：「作業日報データ」）。<b>今までのExcelを置いていたフォルダとは別の、
-このアプリ専用の空フォルダ</b>にしてください</li>
-<li>そのフォルダを右クリック →「共有」→「リンクを知っている全員が編集可能」にして、リンクをコピー
-（社内だけで使う場合は「特定のユーザー」を選び、使う人のメールアドレスを個別に追加しても構いません）</li>
+<li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a> を開く</li>
+<li>Token name に「作業日報」など分かる名前を入力</li>
+<li>Expiration（有効期限）を選ぶ（1年など。期限が来たら作り直します）</li>
+<li><b>Repository access</b> で「Only select repositories」を選び、①で作った <code>nippo-data</code> を指定</li>
+<li><b>Repository permissions</b> の一覧から <b>Contents</b> を探し、<b>Read and write</b> に変更</li>
+<li>下の「Generate token」を押し、表示された文字列（<code>github_pat_…</code>）をコピー
+<br><span style="color:#c02626">※この文字列は一度しか表示されません。閉じる前にコピーしてください</span></li>
 </ol>
-<h4 style="margin:14px 0 6px;font-size:13.5px">③ 各端末で設定する</h4>
+
+<h4 style="margin:14px 0 6px;font-size:13.5px">③ 各端末に設定する</h4>
 <ol style="line-height:1.9;padding-left:1.2em;margin:0">
-<li>この画面の「Azureアプリの クライアントID」に①でコピーしたIDを貼り付け</li>
-<li>「Microsoftでサインイン」→ 自分のMicrosoftアカウントでサインイン</li>
-<li>「OneDriveの共有フォルダのリンク」に②のリンクを貼り付け</li>
-<li>「設定を保存してフォルダに接続」→「今すぐ同期」</li>
+<li>この画面の「保存先リポジトリ」に <code>〈GitHubのユーザー名〉/nippo-data</code> を入力</li>
+<li>「アクセストークン」に②でコピーした文字列を貼り付け</li>
+<li><b>「接続を確認」</b>を押す → 「接続できました」と出れば完了です</li>
+<li>他の端末（スマホを含む）でも、同じリポジトリ名とトークンを入力します</li>
 </ol>
+
 <div style="margin-top:12px;padding:10px;background:#f4f7fb;border-radius:8px;font-size:12.5px;line-height:1.7">
-<b>ポイント</b>：この仕組みでは、Excelのようなファイルのコピーは一切できません。各端末は自分専用の小さな
-データファイルだけをOneDriveの中に置き、変わったファイルだけを読み込みます。同じ記録を2人が同時に直した
-場合は<b>あとから保存したほうが残る</b>という単純な規則で自動的に決着します。個人のMicrosoftアカウント（Outlook.com等）
-でも、会社のMicrosoft 365アカウントでも、どちらでも使えます。</div>`;
+<b>安全面について</b>：トークンは入力した端末のブラウザの中にだけ保存され、日報データにもバックアップファイルにも含まれません。
+権限は①で作ったリポジトリ1つ分だけ、内容の読み書きに限られます。端末を紛失した場合などは、GitHubの
+Settings → Developer settings → Personal access tokens から、そのトークンを削除すればすぐ使えなくなります。</div>`;
 
 /* =========================================================================
    起動
@@ -2419,6 +2253,8 @@ async function boot(){
   if(saved && saved.staff && Object.keys(saved.staff).length){ S = saved; TYPES.forEach(t=> S[t]=S[t]||{}); S.meta=Object.assign(blankState().meta, S.meta||{}); }
   else { S = blankState(); await seedIfEmpty(); }
   if(!S.config['config']) S.config['config']=Object.assign({},DEF_CONFIG,{_u:now(),_d:DEVICE});
+  /* 「別の端末に設定を送る」で作ったリンクから開かれた場合は、その設定を取り込む */
+  const linked = consumeSetupLink();
   migrateHolidaySeed();
   migrateRemovedStaff();
   autoArchiveSites();
@@ -2433,10 +2269,9 @@ async function boot(){
     const latest=Array.from(months).sort().pop();
     if(latest>UI.mk || !months.has(UI.mk)) { UI.mk=latest; UI.date=latest+'-01'; }
   }
-  if(Sync.mode()==='onedrive'){ try{ await MsAuth.boot(); }catch(e){ console.warn('MsAuth boot failed', e); } }
-  if(Sync.mode()==='folder'){ try{ await FolderStore.refreshPermission(false); }catch(e){} }
   render();
   Sync.start();
+  if(linked){ toast('設定を読み込みました。同期しています…'); Sync.schedule(300); }
   if('serviceWorker' in navigator && location.protocol.startsWith('http')){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
   }
